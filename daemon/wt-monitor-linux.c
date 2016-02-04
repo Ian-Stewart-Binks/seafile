@@ -17,6 +17,10 @@
 #define DEBUG_FLAG SEAFILE_DEBUG_WATCH
 #include "log.h"
 
+#include <duet/duet.h>
+
+#define SEAFILE_DUET_TASK_NAME ("seafile_daemon")
+
 typedef struct WatchPathMapping {
     GHashTable *wd_to_path;     /* watch descriptor -> path */
 } WatchPathMapping;
@@ -47,9 +51,11 @@ typedef struct RepoWatchInfo {
 struct SeafWTMonitorPriv {
     pthread_mutex_t hash_lock;
     GHashTable *handle_hash;        /* repo_id -> inotify_fd */
+    GHashTable *duet_hash;        /* repo_id -> duet tid */
     GHashTable *info_hash;          /* inotify_fd -> RepoWatchInfo */
     fd_set read_fds;
     int maxfd;
+    int duet_fd;
 };
 
 static void *wt_monitor_job_linux (void *vmonitor);
@@ -585,6 +591,8 @@ static int
 add_watch (SeafWTMonitorPriv *priv, const char *repo_id, const char *worktree)
 {
     int inotify_fd;
+    __u32 regmask;
+    int tid;
     RepoWatchInfo *info;
 
     inotify_fd = inotify_init ();
@@ -612,6 +620,38 @@ add_watch (SeafWTMonitorPriv *priv, const char *repo_id, const char *worktree)
 
     /* A special event indicates repo-mgr to scan the whole worktree. */
     add_event_to_queue (info->status, WT_EVENT_SCAN_DIR, "", NULL);
+
+    /* Open the duet device. */
+    if (priv->duet_fd == 0) {
+      if ((priv->duet_fd = open_duet_dev()) == -1) {
+        seaf_warning ("[wt_duet] failed to open Duet device: %s.\n", strerror(errno));
+        return -1;
+      }
+    }
+
+    /* Check that the path is appropriate for Duet. */
+    // TODO: Is DUET_MAX_ITEMS the correct macro?
+    if (strnlen(worktree, DUET_MAX_ITEMS + 1) > DUET_MAX_ITEMS) {
+        seaf_warning ("[wt_duet] repo root path too long: %s\n", worktree);
+        return -1;
+    }
+
+    // TODO: look into other duet alerts.
+    regmask = DUET_PAGE_ADDED | DUET_PAGE_REMOVED | DUET_PAGE_DIRTY 
+              | DUET_PAGE_FLUSHED | DUET_FILE_TASK;
+
+    if (duet_register(priv->duet_fd, worktree, regmask, 1, SEAFILE_DUET_TASK_NAME, &tid)) {
+        seaf_warning ("[wt_duet] failed to register with duet.\n");
+        close_duet_dev(priv->duet_fd);
+        return -1;
+    }
+
+    /* Register the working directory with Duet. */
+    pthread_mutex_lock (&priv->hash_lock);
+    g_hash_table_insert (priv->duet_hash,
+                         g_strdup(repo_id), (gpointer)(long)tid);
+
+    pthread_mutex_unlock (&priv->hash_lock);
 
     return inotify_fd;
 }
@@ -652,17 +692,24 @@ update_maxfd (SeafWTMonitor *monitor)
 
 static int handle_rm_repo (SeafWTMonitor *monitor,
                            const char *repo_id,
-                           gpointer handle)
+                           gpointer inotify_handle,
+                           gpointer duet_handle)
 {
     SeafWTMonitorPriv *priv = monitor->priv;
-    int inotify_fd = (int)(long)handle;
+    int inotify_fd = (int)(long)inotify_handle;
+    int duet_tid = (int)(long)duet_handle;
 
     close (inotify_fd);
+    if(duet_deregister(priv->duet_fd, duet_tid)) {
+        seaf_warning ("[wt mon] failed to deregister tid=%d with duet.\n",
+                       duet_tid);
+    }
     FD_CLR (inotify_fd, &priv->read_fds);
     update_maxfd (monitor);
 
     pthread_mutex_lock (&priv->hash_lock);
     g_hash_table_remove (priv->handle_hash, repo_id);
+    g_hash_table_remove (priv->duet_hash, (gpointer)(long)duet_tid);
     g_hash_table_remove (priv->info_hash, (gpointer)(long)inotify_fd);
     pthread_mutex_unlock (&priv->hash_lock);
 
@@ -706,14 +753,21 @@ handle_watch_command (SeafWTMonitor *monitor, WatchCommand *cmd)
         seaf_debug ("[wt mon] add watch for repo %s\n", cmd->repo_id);
         reply_watch_command (monitor, 0);
     } else if (cmd->type == CMD_DELETE_WATCH) {
-        gpointer key, value;
+        gpointer key, value, duet_handle;
         if (!g_hash_table_lookup_extended (priv->handle_hash, cmd->repo_id,
                                            &key, &value)) {
             reply_watch_command (monitor, 0);
             return;
         }
+        else if (!g_hash_table_lookup_extended (priv->duet_hash, cmd->repo_id,
+                                           &key, &duet_handle)) {
+            seaf_warning ("[wt_duet] failed to get duet TID of repo %s.\n",
+                          cmd->repo_id);
+            reply_watch_command (monitor, 0);
+            return;
+        }
 
-        handle_rm_repo (monitor, cmd->repo_id, value);
+        handle_rm_repo (monitor, cmd->repo_id, value, duet_handle);
         reply_watch_command (monitor, 0);
     } else if (cmd->type ==  CMD_REFRESH_WATCH) {
         if (handle_refresh_repo (priv, cmd->repo_id) < 0) {
@@ -739,6 +793,9 @@ seaf_wt_monitor_new (SeafileSession *seaf)
     priv->handle_hash = g_hash_table_new_full
         (g_str_hash, g_str_equal, g_free, NULL);
 
+    priv->duet_hash = g_hash_table_new_full
+        (g_str_hash, g_str_equal, g_free, NULL);
+
     priv->info_hash = g_hash_table_new_full
         (g_direct_hash, g_direct_equal, NULL, (GDestroyNotify)free_repo_watch_info);
 
@@ -746,6 +803,9 @@ seaf_wt_monitor_new (SeafileSession *seaf)
     monitor->seaf = seaf;
 
     monitor->job_func = wt_monitor_job_linux;
+
+    /* Set duet FD to 0 for now, since we cannot error out in this function. */
+    priv->duet_fd = 0;
 
     return monitor;
 }
