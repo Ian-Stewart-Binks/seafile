@@ -1,0 +1,48 @@
+Binary file ./cdc.o matches
+./cdc.h:35:struct SeafileCrypt;
+./cdc.h:40:                              struct SeafileCrypt *crypt,
+./cdc.h:72:                   struct SeafileCrypt *crypt,
+./cdc.h:77:                       struct SeafileCrypt *crypt,
+./Makefile.in:53:libcdc_la_DEPENDENCIES = $(top_builddir)/lib/libseafile_common.la
+./Makefile.in:256:	$(top_builddir)/lib/libseafile_common.la
+Binary file ./.libs/cdc.o matches
+Binary file ./.libs/rabin-checksum.o matches
+Binary file ./.libs/libcdc.a matches
+Binary file ./rabin-checksum.o matches
+./.deps/cdc.Plo:162: ../seafile-crypt.h /usr/include/openssl/aes.h /usr/include/openssl/evp.h \
+./.deps/cdc.Plo:582:../seafile-crypt.h:
+./Makefile.am:15:	$(top_builddir)/lib/libseafile_common.la
+./Makefile:20:pkgdatadir = $(datadir)/seafile
+./Makefile:21:pkgincludedir = $(includedir)/seafile
+./Makefile:22:pkglibdir = $(libdir)/seafile
+./Makefile:23:pkglibexecdir = $(libexecdir)/seafile
+./Makefile:53:libcdc_la_DEPENDENCIES = $(top_builddir)/lib/libseafile_common.la
+./Makefile:78:ACLOCAL = ${SHELL} /home/patrick.payne/duet/seafile+duet/seafile/missing --run aclocal-1.11
+./Makefile:81:AUTOCONF = ${SHELL} /home/patrick.payne/duet/seafile+duet/seafile/missing --run autoconf
+./Makefile:82:AUTOHEADER = ${SHELL} /home/patrick.payne/duet/seafile+duet/seafile/missing --run autoheader
+./Makefile:83:AUTOMAKE = ${SHELL} /home/patrick.payne/duet/seafile+duet/seafile/missing --run automake-1.11
+./Makefile:147:MAKEINFO = ${SHELL} /home/patrick.payne/duet/seafile+duet/seafile/missing --run makeinfo
+./Makefile:157:PACKAGE = seafile
+./Makefile:159:PACKAGE_NAME = seafile
+./Makefile:160:PACKAGE_STRING = seafile 5.0.0
+./Makefile:161:PACKAGE_TARNAME = seafile
+./Makefile:190:abs_builddir = /home/patrick.payne/duet/seafile+duet/seafile/common/cdc
+./Makefile:191:abs_srcdir = /home/patrick.payne/duet/seafile+duet/seafile/common/cdc
+./Makefile:192:abs_top_builddir = /home/patrick.payne/duet/seafile+duet/seafile
+./Makefile:193:abs_top_srcdir = /home/patrick.payne/duet/seafile+duet/seafile
+./Makefile:222:install_sh = ${SHELL} /home/patrick.payne/duet/seafile+duet/seafile/install-sh
+./Makefile:231:pkgpyexecdir = ${pyexecdir}/seafile
+./Makefile:232:pkgpythondir = ${pythondir}/seafile
+./Makefile:256:	$(top_builddir)/lib/libseafile_common.la
+./cdc.c:19:#include "../seafile-crypt.h"
+./cdc.c:105:                   SeafileCrypt *crypt,
+./cdc.c:114:    SeafStat sb;
+./cdc.c:115:    if (seaf_fstat (fd_src, &sb) < 0) {
+./cdc.c:116:        seaf_warning ("CDC: failed to stat: %s.\n", strerror(errno));
+./cdc.c:149:            seaf_warning ("CDC: failed to read: %s.\n", strerror(errno));
+./cdc.c:157:            seaf_warning ("File size changed while chunking.\n");
+./cdc.c:170:                    seaf_warning ("Block id array is not large enough, bail out.\n");
+./cdc.c:196:                    seaf_warning ("Block id array is not large enough, bail out.\n");
+./cdc.c:218:                       SeafileCrypt *crypt,
+./cdc.c:221:    int fd_src = seaf_util_open (filename, O_RDONLY | O_BINARY);
+./cdc.c:223:        seaf_warning ("CDC: failed to open %s.\n", filename);

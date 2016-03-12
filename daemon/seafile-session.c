@@ -27,6 +27,10 @@
 #include "seaf-utils.h"
 #include "log.h"
 
+#include "client-migrate.h"
+
+#include "seafile-rpc.h"
+
 #define MAX_THREADS 50
 
 enum {
@@ -235,6 +239,8 @@ seafile_session_new(const char *seafile_dir,
     session->mq_mgr = seaf_mq_manager_new (session);
     if (!session->mq_mgr)
         goto onerror;
+
+    session->chunk_time = 0;
 
     return session;
 
@@ -475,6 +481,14 @@ cleanup_job_done (void *vdata)
         g_error ("Failed to start worktree monitor.\n");
         return;
     }
+
+    // We consider this the start of the program.
+    global_timestamp = g_get_monotonic_time();
+    setup_time = g_get_monotonic_time() - setup_time;
+    num_bytes_read = 0;
+    num_bytes_written = 0;
+    num_bytes_read_for_chunking = 0;
+    time_spent_chunking = 0;
 
     /* Must be after wt monitor, since we may add watch to repo worktree. */
     if (seaf_repo_manager_start (session->repo_mgr) < 0) {

@@ -34,6 +34,9 @@ struct _CDCFileDescriptor;
 struct _CDCDescriptor;
 struct SeafileCrypt;
 
+extern gint64 num_bytes_read_for_chunking;
+extern gint64 time_spent_chunking;
+
 typedef int (*WriteblockFunc)(const char *repo_id,
                               int version,
                               struct _CDCDescriptor *chunk_descr,

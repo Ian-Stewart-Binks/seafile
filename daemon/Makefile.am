@@ -14,6 +14,7 @@ AM_CFLAGS = -DPKGDATADIR=\"$(pkgdatadir)\" \
 	@BPWRAPPER_CFLAGS@ \
 	-Wall \
 	-pg \
+	-fno-omit-frame-pointer \
 	-lduet
 
 bin_PROGRAMS =

@@ -130,6 +130,11 @@ class SeafileRpcClient(ccnet.RpcClientBase):
         pass
     get_clone_tasks = seafile_get_clone_tasks
 
+    @searpc_func("string", [])
+    def seafile_get_debug_timers():
+        pass
+    get_debug_timers = seafile_get_debug_timers
+
     @searpc_func("object", ["string"])
     def seafile_find_transfer_task(repo_id):
         pass

@@ -56,6 +56,11 @@
 
 #include <zlib.h>
 
+gint64 num_bytes_read;
+gint64 num_bytes_written;
+gint64 time_spent_reading;
+gint64 time_spent_writing;
+
 extern int inet_pton(int af, const char *src, void *dst);
 
 
@@ -753,6 +758,9 @@ readn(int fd, void *vptr, size_t n)
 		nleft -= nread;
 		ptr   += nread;
 	}
+  
+  // Increment debug counters.
+  num_bytes_read += (n - nleft);
 	return(n - nleft);		/* return >= 0 */
 }
 
@@ -776,6 +784,9 @@ writen(int fd, const void *vptr, size_t n)
 		nleft -= nwritten;
 		ptr   += nwritten;
 	}
+
+  num_bytes_written += n;
+
 	return(n);
 }
 

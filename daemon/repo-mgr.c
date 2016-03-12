@@ -1098,6 +1098,13 @@ index_cb (const char *repo_id,
 
 #define MAX_COMMIT_SIZE 100 * (1 << 20) /* 100MB */
 
+#define DUET_DEBUG_CHUNKING
+#ifdef DUET_DEBUG_CHUNKING
+#define REACHED_MAX_COMMIT_SIZE(x) (FALSE)
+#else
+#define REACHED_MAX_COMMIT_SIZE(x) ((x) >= MAX_COMMIT_SIZE)
+#endif
+
 typedef struct _AddOptions {
     LockedFileSet *fset;
     ChangeSet *changeset;
@@ -1201,8 +1208,9 @@ add_file (const char *repo_id,
                             st, 0, crypt, index_cb, modifier, &added);
         if (added) {
             *total_size += (gint64)(st->st_size);
-            if (*total_size >= MAX_COMMIT_SIZE)
+            if (REACHED_MAX_COMMIT_SIZE(*total_size)) {
                 *remain_files = g_queue_new ();
+            }
         } else {
             seaf_sync_manager_update_active_path (seaf->sync_mgr,
                                                   repo_id,
@@ -2112,7 +2120,7 @@ add_remain_files (SeafRepo *repo, struct index_state *istate,
                                   NULL);
 
                 *total_size += (gint64)(st.st_size);
-                if (*total_size >= MAX_COMMIT_SIZE) {
+                if (REACHED_MAX_COMMIT_SIZE(*total_size)) {
                     g_free (path);
                     g_free (full_path);
                     break;
@@ -2424,7 +2432,7 @@ handle_add_files (SeafRepo *repo, struct index_state *istate,
         add_path_to_index (repo, istate, crypt, event->path,
                            ignore_list, scanned_dirs,
                            total_size, &remain_files, fset);
-        if (*total_size >= MAX_COMMIT_SIZE) {
+        if (REACHED_MAX_COMMIT_SIZE(*total_size)) {
             seaf_message ("Creating partial commit after adding %s.\n",
                           event->path);
 
@@ -2465,8 +2473,9 @@ handle_add_files (SeafRepo *repo, struct index_state *istate,
             pthread_mutex_unlock (&status->q_lock);
             return TRUE;
         }
-        if (*total_size >= MAX_COMMIT_SIZE)
+        if (REACHED_MAX_COMMIT_SIZE(*total_size)) {
             return TRUE;
+        }
     }
 
     return FALSE;

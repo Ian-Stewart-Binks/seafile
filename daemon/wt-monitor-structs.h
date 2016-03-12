@@ -11,12 +11,14 @@ enum {
     WT_EVENT_ATTRIB,
     WT_EVENT_OVERFLOW,
     WT_EVENT_SCAN_DIR,
+    WT_EVENT_DUET_CREATE_OR_UPDATE
 };
 
 typedef struct WTEvent {
     int ev_type;
     char *path;
     char *new_path;             /* only used by rename event */
+    unsigned long idx;
 
     /* For CREATE_OR_UPDATE events, if a partial commit was created when
      * adding files recursively, the remaining files will be cached in

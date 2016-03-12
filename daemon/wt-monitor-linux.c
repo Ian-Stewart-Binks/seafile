@@ -2,6 +2,7 @@
 #include "common.h"
 
 #include <sys/select.h>
+#include <sys/time.h>
 #include <sys/inotify.h>
 #include <sys/ioctl.h>
 #include <dirent.h>
@@ -20,6 +21,7 @@
 #include <duet/duet.h>
 
 #define SEAFILE_DUET_TASK_NAME ("seafile_daemon")
+#define FETCH_ITEMS	512
 
 typedef struct WatchPathMapping {
     GHashTable *wd_to_path;     /* watch descriptor -> path */
@@ -350,8 +352,10 @@ process_one_event (int in_fd,
 
     if (event->mask & IN_MODIFY) {
         seaf_debug ("Modified %s.\n", filename);
+        /*
         if (add_to_queue)
             add_event_to_queue (status, WT_EVENT_CREATE_OR_UPDATE, filename, NULL);
+        */
     } else if (event->mask & IN_CREATE) {
         seaf_debug ("Created %s.\n", filename);
 
@@ -455,6 +459,65 @@ out:
     return ret;
 }
 
+
+static gboolean
+process_duet_events (SeafWTMonitorPriv *priv) {
+    gpointer key, value;
+    GHashTableIter iter;
+    RepoWatchInfo *info;
+    int inotify_fd;
+    int i;
+    char *repo_id;
+
+    WTStatus *status = NULL;
+    struct duet_item duet_events[FETCH_ITEMS];
+    int num_events;
+    int tid;
+	char path[DUET_MAX_PATH] = "/";
+
+
+    // Check for duet events.
+    g_hash_table_iter_init (&iter, priv->duet_hash);
+    while (g_hash_table_iter_next (&iter, &key, &value)) {
+        tid = (int)(long)value;
+        repo_id = key;
+        num_events = FETCH_ITEMS;
+        if(duet_fetch(priv->duet_fd, tid, duet_events, &num_events)) {
+            seaf_warning ("Duet fetch failed.\n");
+            return FALSE;
+        }
+
+
+        inotify_fd = (int)(long)g_hash_table_lookup (priv->handle_hash, repo_id);
+        if (!inotify_fd) {
+            seaf_warning ("Inotify FD not found.\n");
+            return FALSE;
+        }
+
+        info = g_hash_table_lookup (priv->info_hash, (gpointer)(long)inotify_fd);
+        if (!info) {
+            seaf_warning ("Repo watch info not found.\n");
+            return FALSE;
+        }
+        status = info->status;
+
+        for (i = 0; i < num_events; i++) {
+            if (duet_events[i].state & DUET_PAGE_DIRTY) {
+                if(duet_get_path(priv->duet_fd, tid, duet_events[i].uuid, path) < 0) {
+                    seaf_warning ("Duet failed to get path of file.\n");
+                    return FALSE;
+                }
+
+                //seaf_warning ("[Duet]: Modified %s flags %x at offset %d.\n",
+                //              path, duet_events[i].state, duet_events[i].idx);
+                add_event_to_queue (status, WT_EVENT_CREATE_OR_UPDATE, path, NULL);
+                // duet_set_done(priv->duet_fd, tid,
+            }
+        }
+    }
+    return TRUE;
+}
+
 static void *
 wt_monitor_job_linux (void *vmonitor)
 {
@@ -469,6 +532,7 @@ wt_monitor_job_linux (void *vmonitor)
     char *repo_id;
     gpointer key, value;
     GHashTableIter iter;
+    int tid;
 
     FD_SET (monitor->cmd_pipe[0], &priv->read_fds);
     priv->maxfd = monitor->cmd_pipe[0];
@@ -476,7 +540,11 @@ wt_monitor_job_linux (void *vmonitor)
     while (1) {
         fds = priv->read_fds;
 
-        rc = select (priv->maxfd + 1, &fds, NULL, NULL, NULL);
+        struct timeval timeout;
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 500000;
+
+        rc = select (priv->maxfd + 1, &fds, NULL, NULL, &timeout);
         if (rc < 0 && errno == EINTR) {
             continue;
         } else if (rc < 0) {
@@ -500,7 +568,10 @@ wt_monitor_job_linux (void *vmonitor)
             if (FD_ISSET (inotify_fd, &fds))
                 process_events (priv, repo_id, inotify_fd);
         }
-    }
+
+        process_duet_events(priv);
+
+    } // while(1)
 
     return NULL;
 }
@@ -629,17 +700,11 @@ add_watch (SeafWTMonitorPriv *priv, const char *repo_id, const char *worktree)
       }
     }
 
-    /* Check that the path is appropriate for Duet. */
-    // TODO: Is DUET_MAX_ITEMS the correct macro?
-    if (strnlen(worktree, DUET_MAX_ITEMS + 1) > DUET_MAX_ITEMS) {
-        seaf_warning ("[wt_duet] repo root path too long: %s\n", worktree);
-        return -1;
-    }
-
     // TODO: look into other duet alerts.
-    regmask = DUET_PAGE_ADDED | DUET_PAGE_REMOVED | DUET_PAGE_DIRTY 
-              | DUET_PAGE_FLUSHED | DUET_FILE_TASK;
+    //regmask = DUET_PAGE_ADDED | DUET_PAGE_REMOVED | DUET_PAGE_DIRTY 
+    //          | DUET_PAGE_FLUSHED | DUET_FILE_TASK;
 
+    regmask = DUET_PAGE_DIRTY | DUET_FILE_TASK;
     if (duet_register(priv->duet_fd, worktree, regmask, 1, SEAFILE_DUET_TASK_NAME, &tid)) {
         seaf_warning ("[wt_duet] failed to register with duet.\n");
         close_duet_dev(priv->duet_fd);
@@ -709,7 +774,7 @@ static int handle_rm_repo (SeafWTMonitor *monitor,
 
     pthread_mutex_lock (&priv->hash_lock);
     g_hash_table_remove (priv->handle_hash, repo_id);
-    g_hash_table_remove (priv->duet_hash, (gpointer)(long)duet_tid);
+    g_hash_table_remove (priv->duet_hash, repo_id);
     g_hash_table_remove (priv->info_hash, (gpointer)(long)inotify_fd);
     pthread_mutex_unlock (&priv->hash_lock);
 

@@ -12,6 +12,7 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <glib/gstdio.h>
+#include <glib.h>
 
 #include "utils.h"
 
@@ -25,6 +26,9 @@
 #define READ_SIZE 1024 * 4
 
 #define BYTE_TO_HEX(b)  (((b)>=10)?('a'+b-10):('0'+b))
+
+gint64 num_bytes_read_for_chunking;
+gint64 time_spent_chunking;
 
 static int default_write_chunk (CDCDescriptor *chunk_descr)
 {
@@ -111,6 +115,9 @@ int file_chunk_cdc(int fd_src,
     CDCDescriptor chunk_descr;
     SHA1_Init (&file_ctx);
 
+    gint64 tick;
+    tick = g_get_monotonic_time();
+
     SeafStat sb;
     if (seaf_fstat (fd_src, &sb) < 0) {
         seaf_warning ("CDC: failed to stat: %s.\n", strerror(errno));
@@ -152,6 +159,7 @@ int file_chunk_cdc(int fd_src,
         }
         tail += ret;
         file_descr->file_size += ret;
+        num_bytes_read_for_chunking += ret;
 
         if (file_descr->file_size > expected_size) {
             seaf_warning ("File size changed while chunking.\n");
@@ -210,6 +218,7 @@ int file_chunk_cdc(int fd_src,
 
     free (buf);
 
+    time_spent_chunking += (g_get_monotonic_time() - tick);
     return 0;
 }
 
