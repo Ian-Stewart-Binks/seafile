@@ -459,6 +459,54 @@ out:
     return ret;
 }
 
+static void duet_events_to_wtevents(struct duet_item *duet_events,
+                                    int num_events,
+                                    SeafWTMonitorPriv *priv,
+                                    WTStatus *status,
+                                    int tid) {
+    int i;
+	char temp_path[DUET_MAX_PATH] = "/";
+    GHashTable *uuid_to_path_hash = NULL;
+    GHashTableIter iter;
+    gpointer key, value;
+    gchar *path;
+    unsigned long long uuid;
+
+    uuid_to_path_hash = g_hash_table_new_full(g_direct_hash,
+                                              g_direct_equal,
+                                              NULL, g_free);
+
+    for (i = 0; i < num_events; i++) {
+        uuid = duet_events[i].uuid;
+        path = (gchar *) g_hash_table_lookup(uuid_to_path_hash, uuid);
+                                             
+        if (path == NULL) {
+            if (duet_events[i].state & DUET_PAGE_DIRTY) {
+                if(duet_get_path(priv->duet_fd, tid, uuid, temp_path) < 0) {
+                    seaf_warning ("Duet failed to get path of file.\n");
+                    continue;
+                }
+            }
+            path = g_strdup(temp_path);
+            g_hash_table_insert (uuid_to_path_hash, (gpointer) uuid, path);
+        }
+
+        //seaf_warning ("[Duet]: Modified %s flags %x at offset %d.\n",
+        //              path, duet_events[i].state, duet_events[i].idx);
+        // duet_set_done(priv->duet_fd, tid,
+    }
+
+
+    // Now generate internal events based off of the duet events we found.
+    g_hash_table_iter_init(&iter, uuid_to_path_hash);
+    while (g_hash_table_iter_next (&iter, &key, &value)) {
+        add_event_to_queue (status, WT_EVENT_CREATE_OR_UPDATE, (char *)value, NULL);
+        seaf_warning ("[Duet]: Modified %s.\n", (char *) value);
+    }
+
+    // Free the memory used for the UUID -> path hash.
+    g_hash_table_destroy(uuid_to_path_hash);
+}
 
 static gboolean
 process_duet_events (SeafWTMonitorPriv *priv) {
@@ -466,14 +514,12 @@ process_duet_events (SeafWTMonitorPriv *priv) {
     GHashTableIter iter;
     RepoWatchInfo *info;
     int inotify_fd;
-    int i;
     char *repo_id;
 
     WTStatus *status = NULL;
     struct duet_item duet_events[FETCH_ITEMS];
     int num_events;
     int tid;
-	char path[DUET_MAX_PATH] = "/";
 
 
     // Check for duet events.
@@ -501,22 +547,11 @@ process_duet_events (SeafWTMonitorPriv *priv) {
         }
         status = info->status;
 
-        for (i = 0; i < num_events; i++) {
-            if (duet_events[i].state & DUET_PAGE_DIRTY) {
-                if(duet_get_path(priv->duet_fd, tid, duet_events[i].uuid, path) < 0) {
-                    seaf_warning ("Duet failed to get path of file.\n");
-                    return FALSE;
-                }
-
-                //seaf_warning ("[Duet]: Modified %s flags %x at offset %d.\n",
-                //              path, duet_events[i].state, duet_events[i].idx);
-                add_event_to_queue (status, WT_EVENT_CREATE_OR_UPDATE, path, NULL);
-                // duet_set_done(priv->duet_fd, tid,
-            }
-        }
+        duet_events_to_wtevents(duet_events, num_events, priv, status, tid);
     }
     return TRUE;
 }
+
 
 static void *
 wt_monitor_job_linux (void *vmonitor)
@@ -532,7 +567,6 @@ wt_monitor_job_linux (void *vmonitor)
     char *repo_id;
     gpointer key, value;
     GHashTableIter iter;
-    int tid;
 
     FD_SET (monitor->cmd_pipe[0], &priv->read_fds);
     priv->maxfd = monitor->cmd_pipe[0];
