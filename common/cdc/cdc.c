@@ -71,6 +71,10 @@ static int init_cdc_file_descriptor (int fd,
     max_block_nr = ((file_size + block_min_sz - 1) / block_min_sz);
     file_descr->blk_sha1s = (uint8_t *)calloc (sizeof(uint8_t),
                                                max_block_nr * CHECKSUM_LENGTH);
+
+    /* Allocate space for the chunk offsets. */
+    file_descr->blk_offsets = (uint64_t *)calloc (sizeof(uint64_t), max_block_nr);
+
     file_descr->max_block_nr = max_block_nr;
 
     return 0;
@@ -94,6 +98,7 @@ do {                                                         \
     memcpy (file_descr->blk_sha1s +                          \
             file_descr->block_nr * CHECKSUM_LENGTH,          \
             chunk_descr.checksum, CHECKSUM_LENGTH);          \
+    file_descr->blk_offsets[file_descr->block_nr] = offset;  \
     SHA1_Update (&file_ctx, chunk_descr.checksum, 20);       \
     file_descr->block_nr++;                                  \
     offset += _block_sz;                                     \

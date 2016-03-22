@@ -41,6 +41,9 @@ struct _Seafile {
     guint32     n_blocks;
     char        **blk_sha1s;
     int         ref_count;
+
+    /* Add tracking of chunk offsets to ease incremental chunking. */
+    uint64_t *blk_offsets;
 };
 
 void

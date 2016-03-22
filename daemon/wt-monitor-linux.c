@@ -352,10 +352,8 @@ process_one_event (int in_fd,
 
     if (event->mask & IN_MODIFY) {
         seaf_debug ("Modified %s.\n", filename);
-        /*
         if (add_to_queue)
             add_event_to_queue (status, WT_EVENT_CREATE_OR_UPDATE, filename, NULL);
-        */
     } else if (event->mask & IN_CREATE) {
         seaf_debug ("Created %s.\n", filename);
 
@@ -500,7 +498,8 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
     // Now generate internal events based off of the duet events we found.
     g_hash_table_iter_init(&iter, uuid_to_path_hash);
     while (g_hash_table_iter_next (&iter, &key, &value)) {
-        add_event_to_queue (status, WT_EVENT_CREATE_OR_UPDATE, (char *)value, NULL);
+        // Remove this temporarily.
+        //add_event_to_queue (status, WT_EVENT_CREATE_OR_UPDATE, (char *)value, NULL);
         seaf_warning ("[Duet]: Modified %s.\n", (char *) value);
     }
 

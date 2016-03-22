@@ -364,6 +364,10 @@ compare_file_content (const char *path, SeafStat *st, const unsigned char *ce_sh
 
         if (cdc.blk_sha1s)
             free (cdc.blk_sha1s);
+
+        if (cdc.blk_offsets) {
+            free (cdc.blk_offsets);
+        }
     }
 
 #if 0

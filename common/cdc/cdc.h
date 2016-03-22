@@ -60,6 +60,9 @@ typedef struct _CDCFileDescriptor {
 
     char repo_id[37];
     int version;
+
+    /* Add tracking of chunk offsets to ease incremental chunking. */
+    uint64_t *blk_offsets;
 } CDCFileDescriptor;
 
 typedef struct _CDCDescriptor {
