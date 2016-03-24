@@ -825,6 +825,7 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
                               const char *repo_id,
                               int version,
                               const char *file_path,
+                              uint64_t offset,
                               unsigned char sha1[],
                               gint64 *size,
                               SeafileCrypt *crypt,
@@ -833,6 +834,13 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
 {
     SeafStat sb;
     CDCFileDescriptor cdc;
+
+    SeafRepo *repo = NULL;
+    SeafBranch *branch = NULL;
+    SeafCommit *commit = NULL;
+    Seafile *seafile = NULL;
+    char *file_id = NULL;
+
 
     if (seaf_stat (file_path, &sb) < 0) {
         seaf_warning ("Bad file %s: %s.\n", file_path, strerror(errno));
@@ -876,7 +884,64 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
         cdc.write_block = seafile_write_chunk;
         memcpy (cdc.repo_id, repo_id, 36);
         cdc.version = version;
-        if (filename_chunk_cdc (file_path, &cdc, crypt, write_data) < 0) {
+
+        if (offset != 0) {
+
+            repo = seaf_repo_manager_get_repo(seaf->repo_mgr, repo_id);
+            if (!repo) {
+                seaf_warning ("Failed to get repo %s.\n", repo_id);
+                offset = 0;
+                goto start_chunking;
+            }
+
+            branch = repo->head;
+            commit = seaf_commit_manager_get_commit(seaf->commit_mgr,
+                                                    repo->id,
+                                                    repo->version,
+                                                    branch->commit_id);
+            if (!commit) {
+                seaf_warning ("Failed to get commit %s:%.8s.\n", repo->id,
+                              branch->commit_id);
+                offset = 0;
+                goto start_chunking;
+            }
+            
+            // Get the file id for this path.
+            file_id = seaf_fs_manager_get_seafile_id_by_path (mgr, repo_id,
+                                                    repo->version, commit->root_id,
+                                                    file_path, NULL);
+            if (!file_id) {
+                seaf_warning("Path %s doesn't exist in repo %s.\n", file_path,
+                             repo_id);
+                offset = 0;
+                goto start_chunking;
+            }
+
+            // Pull information about the file from the disk.
+            seafile = seaf_fs_manager_get_seafile (mgr, repo_id,
+                                                   repo->version, file_id);
+            if (!seafile) {
+                seaf_warning ("Missing Seafile entry for %s.\n", file_id);
+                offset = 0;
+                goto start_chunking;
+            }
+        }
+
+start_chunking:
+        if (commit) {
+            seaf_commit_unref(commit);
+        }
+
+        if (file_id) {
+            g_free(file_id);
+        }
+
+        if (seafile) {
+            seafile_unref (seafile);
+        }
+
+        if (incremental_filename_chunk_cdc (file_path, &cdc, crypt,
+                                            0, write_data) < 0) {
             seaf_warning ("Failed to chunk file with CDC.\n");
             return -1;
         }

@@ -78,6 +78,12 @@ int file_chunk_cdc(int fd_src,
                    struct SeafileCrypt *crypt,
                    gboolean write_data);
 
+int incremental_filename_chunk_cdc(const char *filename,
+                       CDCFileDescriptor *file_descr,
+                       struct SeafileCrypt *crypt,
+                       uint64_t offset,
+                       gboolean write_data);
+
 int filename_chunk_cdc(const char *filename,
                        CDCFileDescriptor *file_descr,
                        struct SeafileCrypt *crypt,

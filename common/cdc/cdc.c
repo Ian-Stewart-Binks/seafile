@@ -239,6 +239,44 @@ int filename_chunk_cdc(const char *filename,
     }
 
     int ret = file_chunk_cdc (fd_src, file_descr, crypt, write_data);
+    /* HACK: We currently need to flush all modified pages in order for Duet to
+     * reliabily deliver modify events for now. This requirement will hopefully
+     * be loosened later (perhaps with extensions to the duet interface.
+     */
+    fsync(fd_src);
+    close (fd_src);
+    return ret;
+}
+
+int incremental_filename_chunk_cdc(const char *filename,
+                                   CDCFileDescriptor *file_descr,
+                                   struct SeafileCrypt *crypt,
+                                   uint64_t offset,
+                                   gboolean write_data) {
+
+    gint64 seek_amount;
+
+    seaf_warning("CDC: Incremental chunking %s by %d\n", filename, offset);
+    int fd_src = seaf_util_open (filename, O_RDONLY | O_BINARY);
+    if (fd_src < 0) {
+        seaf_warning ("CDC: failed to open %s.\n", filename);
+        return -1;
+    }
+
+    seek_amount = seaf_util_lseek(fd_src, offset, SEEK_SET);
+    if (seek_amount < 0) {
+        seaf_warning("CDC: failed to seek %s\n", filename);
+    } else if (seek_amount < offset) {
+        seaf_warning("CDC: failed to seek %s by %d\n", filename, offset);
+    }
+
+    int ret = file_chunk_cdc (fd_src, file_descr, crypt, write_data);
+
+    /* HACK: We currently need to flush all modified pages in order for Duet to
+     * reliabily deliver modify events for now. This requirement will hopefully
+     * be loosened later (perhaps with extensions to the duet interface.
+     */
+    fsync(fd_src);
     close (fd_src);
     return ret;
 }

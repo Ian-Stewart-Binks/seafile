@@ -465,19 +465,29 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
     int i;
 	char temp_path[DUET_MAX_PATH] = "/";
     GHashTable *uuid_to_path_hash = NULL;
+    GHashTable *uuid_to_offset_hash = NULL;
     GHashTableIter iter;
     gpointer key, value;
     gchar *path;
+    uint64_t offset;
+    uint64_t duet_offset;
     unsigned long long uuid;
 
     uuid_to_path_hash = g_hash_table_new_full(g_direct_hash,
                                               g_direct_equal,
                                               NULL, g_free);
 
+    uuid_to_offset_hash = g_hash_table_new_full(g_direct_hash,
+                                                g_direct_equal,
+                                                NULL, NULL);
+
     for (i = 0; i < num_events; i++) {
         uuid = duet_events[i].uuid;
-        path = (gchar *) g_hash_table_lookup(uuid_to_path_hash, uuid);
+        duet_offset = duet_events[i].idx << 12;
+        path = (gchar *) g_hash_table_lookup(uuid_to_path_hash,
+                                             (gconstpointer) uuid);
                                              
+        // Get the name for this UUID if we don't already have it.
         if (path == NULL) {
             if (duet_events[i].state & DUET_PAGE_DIRTY) {
                 if(duet_get_path(priv->duet_fd, tid, uuid, temp_path) < 0) {
@@ -489,6 +499,19 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
             g_hash_table_insert (uuid_to_path_hash, (gpointer) uuid, path);
         }
 
+        // Set the lowest offset we've seen for this UUID.
+        if (g_hash_table_lookup_extended(uuid_to_offset_hash,
+                                         (gconstpointer) uuid,
+                                         NULL, (void **) &offset)) {
+            if (offset > duet_offset) {
+                g_hash_table_replace(uuid_to_offset_hash, (gpointer) uuid,
+                                     (gpointer) duet_offset);
+            }
+        } else {
+            g_hash_table_insert(uuid_to_offset_hash, (gpointer) uuid,
+                                (gpointer) duet_offset);
+        }
+
         //seaf_warning ("[Duet]: Modified %s flags %x at offset %d.\n",
         //              path, duet_events[i].state, duet_events[i].idx);
         // duet_set_done(priv->duet_fd, tid,
@@ -497,14 +520,32 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
 
     // Now generate internal events based off of the duet events we found.
     g_hash_table_iter_init(&iter, uuid_to_path_hash);
+    pthread_mutex_lock(&status->duet_hint_mutex);
     while (g_hash_table_iter_next (&iter, &key, &value)) {
-        // Remove this temporarily.
-        //add_event_to_queue (status, WT_EVENT_CREATE_OR_UPDATE, (char *)value, NULL);
-        seaf_warning ("[Duet]: Modified %s.\n", (char *) value);
+        uuid = (uint64_t) key;
+        path = (gchar *) value;
+
+        duet_offset = (uint64_t) g_hash_table_lookup(uuid_to_offset_hash, uuid);
+
+        // Set the lowest offset we've seen for this UUID.
+        if (g_hash_table_lookup_extended(status->filename_to_offset_hash,
+                                         path, NULL, (void **) &offset)) {
+            if (offset > duet_offset) {
+                g_hash_table_replace(status->filename_to_offset_hash,
+                                     (gpointer) g_strdup(path),
+                                     (gpointer) duet_offset);
+            }
+        } else {
+            g_hash_table_insert(status->filename_to_offset_hash,
+                                (gpointer) g_strdup(path),
+                                (gpointer) duet_offset);
+        }
     }
+    pthread_mutex_unlock(&status->duet_hint_mutex);
 
     // Free the memory used for the UUID -> path hash.
     g_hash_table_destroy(uuid_to_path_hash);
+    g_hash_table_destroy(uuid_to_offset_hash);
 }
 
 static gboolean

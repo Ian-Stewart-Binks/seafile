@@ -53,6 +53,12 @@ typedef struct WTStatus {
      */
     pthread_mutex_t ap_q_lock;
     GQueue *active_paths;
+
+    /* HACK: Provide acccess to the DUET hints from the WTStatus. This still
+     * needs to be carefully examined for correct operation in all cases.
+     */
+    pthread_mutex_t duet_hint_mutex;
+    GHashTable *filename_to_offset_hash;
 } WTStatus;
 
 WTStatus *create_wt_status (const char *repo_id);

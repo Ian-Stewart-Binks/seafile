@@ -32,6 +32,7 @@
 #include "unpack-trees.h"
 #include "diff-simple.h"
 #include "change-set.h"
+#include "wt-monitor.h"
 
 #include "db.h"
 
@@ -1086,10 +1087,33 @@ index_cb (const char *repo_id,
           gboolean write_data)
 {
     gint64 size;
+    WTStatus *status = NULL;
+    uint64_t offset = 0;
+    
+
+    /* HACK: We need the WTStatus in order to see the Duet hints. A better
+     * design for getting this information from the wt monitor code to the
+     * repo manager is needed.
+     */
+    status = seaf_wt_monitor_get_worktree_status (seaf->wt_monitor, repo_id);
+    if (!status) {
+        seaf_warning ("Can't find worktree status for repo %s(%.8s).\n", repo_id);
+        return -1;
+    }
 
     /* Check in blocks and get object ID. */
+    pthread_mutex_lock(&status->duet_hint_mutex);
+    if (g_hash_table_lookup_extended(status->filename_to_offset_hash,
+                                     path, NULL, (void **) &offset)) {
+
+        g_hash_table_remove(status->filename_to_offset_hash, path);
+    } else {
+        offset = 0;
+    }
+    pthread_mutex_unlock(&status->duet_hint_mutex);
+
     if (seaf_fs_manager_index_blocks (seaf->fs_mgr, repo_id, version,
-                                      path, sha1, &size, crypt, write_data, TRUE) < 0) {
+                                      path, offset, sha1, &size, crypt, write_data, TRUE) < 0) {
         seaf_warning ("Failed to index file %s.\n", path);
         return -1;
     }
