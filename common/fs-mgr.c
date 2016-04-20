@@ -31,6 +31,10 @@
 #endif  /* SEAFILE_SERVER */
 
 #include "db.h"
+#include "seafile-rpc.h"
+
+#define SEAF_TMP_EXT "~"
+#define CHECKSUM_LENGTH 20
 
 struct _SeafFSManagerPriv {
     /* GHashTable      *seafile_cache; */
@@ -824,7 +828,8 @@ int
 seaf_fs_manager_index_blocks (SeafFSManager *mgr,
                               const char *repo_id,
                               int version,
-                              const char *file_path,
+                              const char *path,
+                              const char *full_path,
                               uint64_t offset,
                               unsigned char sha1[],
                               gint64 *size,
@@ -840,10 +845,11 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
     SeafCommit *commit = NULL;
     Seafile *seafile = NULL;
     char *file_id = NULL;
+    int num_unchanged = 0;
+    char **existing_blocks = NULL;
 
-
-    if (seaf_stat (file_path, &sb) < 0) {
-        seaf_warning ("Bad file %s: %s.\n", file_path, strerror(errno));
+    if (seaf_stat (full_path, &sb) < 0) {
+        seaf_warning ("Bad file %s: %s.\n", full_path, strerror(errno));
         return -1;
     }
 
@@ -864,7 +870,7 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
             cdc.write_block = seafile_write_chunk;
             memcpy (cdc.repo_id, repo_id, 36);
             cdc.version = version;
-            if (filename_chunk_cdc (file_path, &cdc, crypt, write_data) < 0) {
+            if (filename_chunk_cdc (full_path, &cdc, crypt, write_data) < 0) {
                 seaf_warning ("Failed to chunk file with CDC.\n");
                 return -1;
             }
@@ -872,7 +878,7 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
             memcpy (cdc.repo_id, repo_id, 36);
             cdc.version = version;
             cdc.file_size = sb.st_size;
-            if (split_file_to_block (repo_id, version, file_path, sb.st_size,
+            if (split_file_to_block (repo_id, version, full_path, sb.st_size,
                                      crypt, &cdc, write_data) < 0) {
                 return -1;
             }
@@ -886,6 +892,8 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
         cdc.version = version;
 
         if (offset != 0) {
+            gint64 tick;
+            tick = g_get_monotonic_time();
 
             repo = seaf_repo_manager_get_repo(seaf->repo_mgr, repo_id);
             if (!repo) {
@@ -909,9 +917,9 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
             // Get the file id for this path.
             file_id = seaf_fs_manager_get_seafile_id_by_path (mgr, repo_id,
                                                     repo->version, commit->root_id,
-                                                    file_path, NULL);
+                                                    path, NULL);
             if (!file_id) {
-                seaf_warning("Path %s doesn't exist in repo %s.\n", file_path,
+                seaf_warning("Path %s doesn't exist in repo %s.\n", path,
                              repo_id);
                 offset = 0;
                 goto start_chunking;
@@ -925,6 +933,28 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
                 offset = 0;
                 goto start_chunking;
             }
+
+            // We have the blocklist for the old version of the file.
+            // Now use it the populate the chunks we know didn't change.
+            seaf_warning("[HASHDEBUG] seafile->n_blocks = %d\n", seafile->n_blocks);
+            seaf_warning("[HASHDEBUG] offset desired = %ld\n", offset);
+
+            // NOTE: this loop will never allow us to retain all the blocks
+            // the old version of the file, e.g. in the case of an append. This
+            // is because the final block in a file generally only stops because
+            // we've reached the end of the file, not because of a valid chunk
+            // boundary. As such, we rechunk the last chunk + the appended data.
+            num_unchanged = 0;
+            while ((num_unchanged + 1 < seafile->n_blocks) &&
+                   (seafile->blk_offsets[num_unchanged + 1] < offset)) {
+                num_unchanged++;
+            }
+
+            offset = seafile->blk_offsets[num_unchanged];
+            existing_blocks = seafile->blk_sha1s;
+            seaf_warning("[HASHDEBUG] first offset = %ld\n", offset);
+
+            metadata_load_time += (g_get_monotonic_time() - tick);
         }
 
 start_chunking:
@@ -936,21 +966,29 @@ start_chunking:
             g_free(file_id);
         }
 
+        if (incremental_filename_chunk_cdc (full_path, &cdc, crypt,
+                                (seafile != NULL) ? seafile->blk_offsets : NULL,
+                                            offset, existing_blocks,
+                                            num_unchanged, write_data) < 0) {
+            seaf_warning ("Failed to chunk file with CDC.\n");
+
+            if (seafile) {
+                seafile_unref (seafile);
+            }
+
+            return -1;
+        }
+
         if (seafile) {
             seafile_unref (seafile);
         }
 
-        if (incremental_filename_chunk_cdc (file_path, &cdc, crypt,
-                                            0, write_data) < 0) {
-            seaf_warning ("Failed to chunk file with CDC.\n");
-            return -1;
-        }
 #endif
 
         if (write_data && write_seafile (mgr, repo_id, version, &cdc, sha1) < 0) {
             g_free (cdc.blk_sha1s);
             free (cdc.blk_offsets);
-            seaf_warning ("Failed to write seafile for %s.\n", file_path);
+            seaf_warning ("Failed to write seafile for %s.\n", path);
             return -1;
         }
     }

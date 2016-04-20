@@ -33,6 +33,7 @@
 #endif  /* SEAFILE_SERVER */
 
 gint64 global_timestamp;
+gint64 metadata_load_time;
 gint64 setup_time;
 
 /* -------- Utilities -------- */
@@ -422,18 +423,22 @@ char *
 seafile_get_debug_timers (GError **error)
 {
   gchar *timer_val;
-  timer_val = g_strdup_printf("bytes_read=%ld\nbytes_written=%ld\n"
-                       "chunk_bytes=%ld\nchunk_time=%ld\n"
+  timer_val = g_strdup_printf("bytes_read=%ld\n"
+                       "bytes_written=%ld\n"
+                       "chunk_bytes=%ld\n"
+                       "chunk_time=%ld\n"
                        "global_time=%ld\n"
-                       "setup_time=%ld\n",
+                       "setup_time=%ld\n"
+                       "meta_time=%ld\n",
             num_bytes_read, num_bytes_written, num_bytes_read_for_chunking,
             time_spent_chunking, g_get_monotonic_time() - global_timestamp,
-            setup_time);
+            setup_time, metadata_load_time);
 
   num_bytes_read = 0;
   num_bytes_written = 0;
   num_bytes_read_for_chunking = 0;
   time_spent_chunking = 0;
+  metadata_load_time = 0;
   global_timestamp = g_get_monotonic_time();
 
   return timer_val;

@@ -1082,6 +1082,7 @@ static int
 index_cb (const char *repo_id,
           int version,
           const char *path,
+          const char *full_path,
           unsigned char sha1[],
           SeafileCrypt *crypt,
           gboolean write_data)
@@ -1090,6 +1091,8 @@ index_cb (const char *repo_id,
     WTStatus *status = NULL;
     uint64_t offset = 0;
     
+    GHashTableIter iter;
+    gpointer key, value;
 
     /* HACK: We need the WTStatus in order to see the Duet hints. A better
      * design for getting this information from the wt monitor code to the
@@ -1097,23 +1100,32 @@ index_cb (const char *repo_id,
      */
     status = seaf_wt_monitor_get_worktree_status (seaf->wt_monitor, repo_id);
     if (!status) {
-        seaf_warning ("Can't find worktree status for repo %s(%.8s).\n", repo_id);
+        seaf_warning ("Can't find worktree status for repo %s.\n", repo_id);
         return -1;
     }
 
     /* Check in blocks and get object ID. */
     pthread_mutex_lock(&status->duet_hint_mutex);
+
+    /*
+    g_hash_table_iter_init(&iter, status->filename_to_offset_hash);
+    while (g_hash_table_iter_next (&iter, &key, &value)) {
+        seaf_warning("[HASHDUMP] %s -> %ld\n", (char *) key, (long int) value);
+    }
+    */
+
     if (g_hash_table_lookup_extended(status->filename_to_offset_hash,
                                      path, NULL, (void **) &offset)) {
 
         g_hash_table_remove(status->filename_to_offset_hash, path);
+        //seaf_warning("[HASHDEBUG] Got offset %ld\n", offset);
     } else {
         offset = 0;
     }
     pthread_mutex_unlock(&status->duet_hint_mutex);
 
-    if (seaf_fs_manager_index_blocks (seaf->fs_mgr, repo_id, version,
-                                      path, offset, sha1, &size, crypt, write_data, TRUE) < 0) {
+    if (seaf_fs_manager_index_blocks (seaf->fs_mgr, repo_id, version, path,
+                                      full_path, offset, sha1, &size, crypt, write_data, TRUE) < 0) {
         seaf_warning ("Failed to index file %s.\n", path);
         return -1;
     }

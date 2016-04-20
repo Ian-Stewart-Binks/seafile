@@ -76,12 +76,16 @@ typedef struct _CDCDescriptor {
 int file_chunk_cdc(int fd_src,
                    CDCFileDescriptor *file_descr,
                    struct SeafileCrypt *crypt,
+                   uint64_t expected_size,
                    gboolean write_data);
 
 int incremental_filename_chunk_cdc(const char *filename,
                        CDCFileDescriptor *file_descr,
                        struct SeafileCrypt *crypt,
-                       uint64_t offset,
+                       uint64_t *offsets,
+                       uint64_t chunk_offset,
+                       char **existing_blocks,
+                       int num_unchanged,
                        gboolean write_data);
 
 int filename_chunk_cdc(const char *filename,
@@ -90,5 +94,9 @@ int filename_chunk_cdc(const char *filename,
                        gboolean write_data);
 
 void cdc_init ();
+
+int init_cdc_file_descriptor (int fd,
+                              uint64_t file_size,
+                              CDCFileDescriptor *file_descr);
 
 #endif

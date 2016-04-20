@@ -489,6 +489,7 @@ cleanup_job_done (void *vdata)
     num_bytes_written = 0;
     num_bytes_read_for_chunking = 0;
     time_spent_chunking = 0;
+    metadata_load_time = 0;
 
     /* Must be after wt monitor, since we may add watch to repo worktree. */
     if (seaf_repo_manager_start (session->repo_mgr) < 0) {

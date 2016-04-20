@@ -21,7 +21,7 @@
 #include <duet/duet.h>
 
 #define SEAFILE_DUET_TASK_NAME ("seafile_daemon")
-#define FETCH_ITEMS	512
+#define FETCH_ITEMS	1024
 
 typedef struct WatchPathMapping {
     GHashTable *wd_to_path;     /* watch descriptor -> path */
@@ -62,6 +62,7 @@ struct SeafWTMonitorPriv {
 
 static void *wt_monitor_job_linux (void *vmonitor);
 
+static gboolean process_duet_events (SeafWTMonitorPriv *priv);
 static void handle_watch_command (SeafWTMonitor *monitor, WatchCommand *cmd);
 
 static int
@@ -322,6 +323,7 @@ handle_consecutive_duplicate_event (RepoWatchInfo *info, struct inotify_event *e
 
 static void
 process_one_event (int in_fd,
+                   SeafWTMonitorPriv *priv,
                    RepoWatchInfo *info,
                    const char *worktree,
                    const char *parent,
@@ -353,6 +355,7 @@ process_one_event (int in_fd,
     if (event->mask & IN_MODIFY) {
         seaf_debug ("Modified %s.\n", filename);
         if (add_to_queue)
+            process_duet_events(priv);
             add_event_to_queue (status, WT_EVENT_CREATE_OR_UPDATE, filename, NULL);
     } else if (event->mask & IN_CREATE) {
         seaf_debug ("Created %s.\n", filename);
@@ -446,7 +449,7 @@ process_events (SeafWTMonitorPriv *priv, const char *repo_id, int in_fd)
             goto out;
         }
 
-        process_one_event (in_fd, info, info->worktree, dir,
+        process_one_event (in_fd, priv, info, info->worktree, dir,
                            event, (offset >= buf_size));
     }
 
@@ -461,6 +464,7 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
                                     int num_events,
                                     SeafWTMonitorPriv *priv,
                                     WTStatus *status,
+                                    RepoWatchInfo *info,
                                     int tid) {
     int i;
 	char temp_path[DUET_MAX_PATH] = "/";
@@ -567,12 +571,6 @@ process_duet_events (SeafWTMonitorPriv *priv) {
     while (g_hash_table_iter_next (&iter, &key, &value)) {
         tid = (int)(long)value;
         repo_id = key;
-        num_events = FETCH_ITEMS;
-        if(duet_fetch(priv->duet_fd, tid, duet_events, &num_events)) {
-            seaf_warning ("Duet fetch failed.\n");
-            return FALSE;
-        }
-
 
         inotify_fd = (int)(long)g_hash_table_lookup (priv->handle_hash, repo_id);
         if (!inotify_fd) {
@@ -587,7 +585,15 @@ process_duet_events (SeafWTMonitorPriv *priv) {
         }
         status = info->status;
 
-        duet_events_to_wtevents(duet_events, num_events, priv, status, tid);
+        do {
+            num_events = FETCH_ITEMS;
+            if(duet_fetch(priv->duet_fd, tid, duet_events, &num_events)) {
+                seaf_warning ("Duet fetch failed.\n");
+                return FALSE;
+            }
+
+            duet_events_to_wtevents(duet_events, num_events, priv, status, info, tid);
+        } while (num_events != 0);
     }
     return TRUE;
 }
