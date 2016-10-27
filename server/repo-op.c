@@ -662,6 +662,7 @@ seaf_repo_manager_post_file (SeafRepoManager *mgr,
     if (seaf_fs_manager_index_blocks (seaf->fs_mgr,
                                       repo->store_id, repo->version,
                                       temp_file_path,
+                                      0,
                                       sha1, &size, crypt, TRUE, FALSE) < 0) {
         seaf_warning ("failed to index blocks");
         g_set_error (error, SEAFILE_DOMAIN, SEAF_ERR_GENERAL,
@@ -1040,7 +1041,7 @@ seaf_repo_manager_post_multi_files (SeafRepoManager *mgr,
         size = g_new (gint64, 1);
         if (seaf_fs_manager_index_blocks (seaf->fs_mgr,
                                           repo->store_id, repo->version,
-                                          path, sha1, size, crypt, TRUE, FALSE) < 0) {
+                                          path, 0, sha1, size, crypt, TRUE, FALSE) < 0) {
             seaf_warning ("failed to index blocks");
             g_set_error (error, SEAFILE_DOMAIN, SEAF_ERR_GENERAL,
                          "Failed to index blocks");
@@ -2949,7 +2950,7 @@ seaf_repo_manager_put_file (SeafRepoManager *mgr,
     gint64 size;
     if (seaf_fs_manager_index_blocks (seaf->fs_mgr,
                                       repo->store_id, repo->version,
-                                      temp_file_path,
+                                      temp_file_path, 0,
                                       sha1, &size, crypt, TRUE, FALSE) < 0) {
         seaf_warning ("failed to index blocks");
         g_set_error (error, SEAFILE_DOMAIN, SEAF_ERR_GENERAL,

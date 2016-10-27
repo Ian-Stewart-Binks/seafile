@@ -4,6 +4,10 @@
 
 #include "seafile-object.h"
 
+extern gint64 global_timestamp;
+extern gint64 metadata_load_time;
+extern gint64 setup_time;
+
 /**
  * seafile_get_session_info:
  *
@@ -341,6 +345,14 @@ seafile_remove_clone_task (const char *repo_id, GError **error);
  */
 GList *
 seafile_get_clone_tasks (GError **error);
+
+/**
+ * seafile_get_debug_timers:
+ *
+ * Get the value of the debug timers.
+ */
+char*
+seafile_get_debug_timers (GError **error);
 
 /**
  * seafile_sync:

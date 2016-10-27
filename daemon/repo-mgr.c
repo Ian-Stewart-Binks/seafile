@@ -32,6 +32,7 @@
 #include "unpack-trees.h"
 #include "diff-simple.h"
 #include "change-set.h"
+#include "wt-monitor.h"
 
 #include "db.h"
 
@@ -1081,15 +1082,50 @@ static int
 index_cb (const char *repo_id,
           int version,
           const char *path,
+          const char *full_path,
           unsigned char sha1[],
           SeafileCrypt *crypt,
           gboolean write_data)
 {
     gint64 size;
+    WTStatus *status = NULL;
+    uint64_t offset = 0;
+    
+    GHashTableIter iter;
+    gpointer key, value;
+
+    /* HACK: We need the WTStatus in order to see the Duet hints. A better
+     * design for getting this information from the wt monitor code to the
+     * repo manager is needed.
+     */
+    status = seaf_wt_monitor_get_worktree_status (seaf->wt_monitor, repo_id);
+    if (!status) {
+        seaf_warning ("Can't find worktree status for repo %s.\n", repo_id);
+        return -1;
+    }
 
     /* Check in blocks and get object ID. */
-    if (seaf_fs_manager_index_blocks (seaf->fs_mgr, repo_id, version,
-                                      path, sha1, &size, crypt, write_data, TRUE) < 0) {
+    pthread_mutex_lock(&status->duet_hint_mutex);
+
+    /*
+    g_hash_table_iter_init(&iter, status->filename_to_offset_hash);
+    while (g_hash_table_iter_next (&iter, &key, &value)) {
+        seaf_warning("[HASHDUMP] %s -> %ld\n", (char *) key, (long int) value);
+    }
+    */
+
+    if (g_hash_table_lookup_extended(status->filename_to_offset_hash,
+                                     path, NULL, (void **) &offset)) {
+
+        g_hash_table_remove(status->filename_to_offset_hash, path);
+        //seaf_warning("[HASHDEBUG] Got offset %ld\n", offset);
+    } else {
+        offset = 0;
+    }
+    pthread_mutex_unlock(&status->duet_hint_mutex);
+
+    if (seaf_fs_manager_index_blocks (seaf->fs_mgr, repo_id, version, path,
+                                      full_path, offset, sha1, &size, crypt, write_data, TRUE) < 0) {
         seaf_warning ("Failed to index file %s.\n", path);
         return -1;
     }
@@ -1097,6 +1133,13 @@ index_cb (const char *repo_id,
 }
 
 #define MAX_COMMIT_SIZE 100 * (1 << 20) /* 100MB */
+
+#define DUET_DEBUG_CHUNKING
+#ifdef DUET_DEBUG_CHUNKING
+#define REACHED_MAX_COMMIT_SIZE(x) (FALSE)
+#else
+#define REACHED_MAX_COMMIT_SIZE(x) ((x) >= MAX_COMMIT_SIZE)
+#endif
 
 typedef struct _AddOptions {
     LockedFileSet *fset;
@@ -1201,8 +1244,9 @@ add_file (const char *repo_id,
                             st, 0, crypt, index_cb, modifier, &added);
         if (added) {
             *total_size += (gint64)(st->st_size);
-            if (*total_size >= MAX_COMMIT_SIZE)
+            if (REACHED_MAX_COMMIT_SIZE(*total_size)) {
                 *remain_files = g_queue_new ();
+            }
         } else {
             seaf_sync_manager_update_active_path (seaf->sync_mgr,
                                                   repo_id,
@@ -2112,7 +2156,7 @@ add_remain_files (SeafRepo *repo, struct index_state *istate,
                                   NULL);
 
                 *total_size += (gint64)(st.st_size);
-                if (*total_size >= MAX_COMMIT_SIZE) {
+                if (REACHED_MAX_COMMIT_SIZE(*total_size)) {
                     g_free (path);
                     g_free (full_path);
                     break;
@@ -2424,7 +2468,7 @@ handle_add_files (SeafRepo *repo, struct index_state *istate,
         add_path_to_index (repo, istate, crypt, event->path,
                            ignore_list, scanned_dirs,
                            total_size, &remain_files, fset);
-        if (*total_size >= MAX_COMMIT_SIZE) {
+        if (REACHED_MAX_COMMIT_SIZE(*total_size)) {
             seaf_message ("Creating partial commit after adding %s.\n",
                           event->path);
 
@@ -2465,8 +2509,9 @@ handle_add_files (SeafRepo *repo, struct index_state *istate,
             pthread_mutex_unlock (&status->q_lock);
             return TRUE;
         }
-        if (*total_size >= MAX_COMMIT_SIZE)
+        if (REACHED_MAX_COMMIT_SIZE(*total_size)) {
             return TRUE;
+        }
     }
 
     return FALSE;

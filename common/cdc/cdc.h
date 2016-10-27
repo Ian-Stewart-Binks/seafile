@@ -34,6 +34,9 @@ struct _CDCFileDescriptor;
 struct _CDCDescriptor;
 struct SeafileCrypt;
 
+extern gint64 num_bytes_read_for_chunking;
+extern gint64 time_spent_chunking;
+
 typedef int (*WriteblockFunc)(const char *repo_id,
                               int version,
                               struct _CDCDescriptor *chunk_descr,
@@ -57,6 +60,9 @@ typedef struct _CDCFileDescriptor {
 
     char repo_id[37];
     int version;
+
+    /* Add tracking of chunk offsets to ease incremental chunking. */
+    uint64_t *blk_offsets;
 } CDCFileDescriptor;
 
 typedef struct _CDCDescriptor {
@@ -70,7 +76,17 @@ typedef struct _CDCDescriptor {
 int file_chunk_cdc(int fd_src,
                    CDCFileDescriptor *file_descr,
                    struct SeafileCrypt *crypt,
+                   uint64_t expected_size,
                    gboolean write_data);
+
+int incremental_filename_chunk_cdc(const char *filename,
+                       CDCFileDescriptor *file_descr,
+                       struct SeafileCrypt *crypt,
+                       uint64_t *offsets,
+                       uint64_t chunk_offset,
+                       char **existing_blocks,
+                       int num_unchanged,
+                       gboolean write_data);
 
 int filename_chunk_cdc(const char *filename,
                        CDCFileDescriptor *file_descr,
@@ -78,5 +94,9 @@ int filename_chunk_cdc(const char *filename,
                        gboolean write_data);
 
 void cdc_init ();
+
+int init_cdc_file_descriptor (int fd,
+                              uint64_t file_size,
+                              CDCFileDescriptor *file_descr);
 
 #endif

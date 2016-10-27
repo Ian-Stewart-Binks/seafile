@@ -12,6 +12,7 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <glib/gstdio.h>
+#include <glib.h>
 
 #include "utils.h"
 
@@ -25,6 +26,9 @@
 #define READ_SIZE 1024 * 4
 
 #define BYTE_TO_HEX(b)  (((b)>=10)?('a'+b-10):('0'+b))
+
+gint64 num_bytes_read_for_chunking;
+gint64 time_spent_chunking;
 
 static int default_write_chunk (CDCDescriptor *chunk_descr)
 {
@@ -44,9 +48,9 @@ static int default_write_chunk (CDCDescriptor *chunk_descr)
     return ret;
 }
 
-static int init_cdc_file_descriptor (int fd,
-                                     uint64_t file_size,
-                                     CDCFileDescriptor *file_descr)
+int init_cdc_file_descriptor (int fd,
+                              uint64_t file_size,
+                              CDCFileDescriptor *file_descr)
 {
     int max_block_nr = 0;
     int block_min_sz = 0;
@@ -67,6 +71,10 @@ static int init_cdc_file_descriptor (int fd,
     max_block_nr = ((file_size + block_min_sz - 1) / block_min_sz);
     file_descr->blk_sha1s = (uint8_t *)calloc (sizeof(uint8_t),
                                                max_block_nr * CHECKSUM_LENGTH);
+
+    /* Allocate space for the chunk offsets. */
+    file_descr->blk_offsets = (uint64_t *)calloc (sizeof(uint64_t), max_block_nr);
+
     file_descr->max_block_nr = max_block_nr;
 
     return 0;
@@ -90,6 +98,7 @@ do {                                                         \
     memcpy (file_descr->blk_sha1s +                          \
             file_descr->block_nr * CHECKSUM_LENGTH,          \
             chunk_descr.checksum, CHECKSUM_LENGTH);          \
+    file_descr->blk_offsets[file_descr->block_nr] = offset;  \
     SHA1_Update (&file_ctx, chunk_descr.checksum, 20);       \
     file_descr->block_nr++;                                  \
     offset += _block_sz;                                     \
@@ -103,22 +112,24 @@ do {                                                         \
 int file_chunk_cdc(int fd_src,
                    CDCFileDescriptor *file_descr,
                    SeafileCrypt *crypt,
+                   uint64_t expected_size,
                    gboolean write_data)
 {
     char *buf;
     uint32_t buf_sz;
     SHA_CTX file_ctx;
     CDCDescriptor chunk_descr;
+    int i;
     SHA1_Init (&file_ctx);
 
-    SeafStat sb;
-    if (seaf_fstat (fd_src, &sb) < 0) {
-        seaf_warning ("CDC: failed to stat: %s.\n", strerror(errno));
-        return -1;
-    }
-    uint64_t expected_size = sb.st_size;
+    gint64 tick;
+    tick = g_get_monotonic_time();
 
-    init_cdc_file_descriptor (fd_src, expected_size, file_descr);
+    // Get the running SHA1 from preexisting blocks.
+    for (i = 0; i < file_descr->block_nr; i++) {
+        SHA1_Update(&file_ctx, file_descr->blk_sha1s + i * CHECKSUM_LENGTH, 20);
+    }
+
     uint32_t block_min_sz = file_descr->block_min_sz;
     uint32_t block_mask = file_descr->block_sz - 1;
 
@@ -126,6 +137,10 @@ int file_chunk_cdc(int fd_src,
     int offset = 0;
     int ret = 0;
     int tail, cur, rsize;
+
+    if (file_descr->block_nr != 0) {
+        offset = file_descr->blk_offsets[file_descr->block_nr - 1];
+    }
 
     buf_sz = file_descr->block_max_sz;
     buf = chunk_descr.block_buf = malloc (buf_sz);
@@ -152,6 +167,7 @@ int file_chunk_cdc(int fd_src,
         }
         tail += ret;
         file_descr->file_size += ret;
+        num_bytes_read_for_chunking += ret;
 
         if (file_descr->file_size > expected_size) {
             seaf_warning ("File size changed while chunking.\n");
@@ -210,6 +226,7 @@ int file_chunk_cdc(int fd_src,
 
     free (buf);
 
+    time_spent_chunking += (g_get_monotonic_time() - tick);
     return 0;
 }
 
@@ -224,7 +241,78 @@ int filename_chunk_cdc(const char *filename,
         return -1;
     }
 
-    int ret = file_chunk_cdc (fd_src, file_descr, crypt, write_data);
+    int ret = file_chunk_cdc (fd_src, file_descr, crypt, 0, write_data);
+    /* HACK: We currently need to flush all modified pages in order for Duet to
+     * reliabily deliver modify events for now. This requirement will hopefully
+     * be loosened later (perhaps with extensions to the duet interface.
+     */
+    fsync(fd_src);
+    close (fd_src);
+    return ret;
+}
+
+int incremental_filename_chunk_cdc(const char *filename,
+                                   CDCFileDescriptor *file_descr,
+                                   struct SeafileCrypt *crypt,
+                                   uint64_t *offsets,
+                                   uint64_t chunk_offset,
+                                   char **existing_blocks,
+                                   int num_unchanged,
+                                   gboolean write_data) {
+
+    gint64 seek_amount;
+    int i;
+    char buf[100];
+
+    seaf_warning("CDC: Incremental chunking %s by %lu\n", filename, chunk_offset);
+    int fd_src = seaf_util_open (filename, O_RDONLY | O_BINARY);
+    if (fd_src < 0) {
+        seaf_warning ("CDC: failed to open %s.\n", filename);
+        return -1;
+    }
+
+    // Perform some intialization of the CDC struct.
+    SeafStat sb;
+    if (seaf_fstat (fd_src, &sb) < 0) {
+        seaf_warning ("CDC: failed to stat: %s.\n", strerror(errno));
+        return -1;
+    }
+    uint64_t expected_size = sb.st_size;
+    init_cdc_file_descriptor (fd_src, expected_size, file_descr);
+
+    for (i = 0; i < num_unchanged; i++) {
+        hex_to_rawdata (existing_blocks[i],
+                        file_descr->blk_sha1s + i * CHECKSUM_LENGTH, 20);
+        file_descr->blk_offsets[i] = offsets[i];
+    }
+    file_descr->block_nr = num_unchanged;
+
+    if (offsets != NULL) {
+        file_descr->file_size = offsets[num_unchanged - 1];
+    }
+
+    seek_amount = seaf_util_lseek(fd_src, chunk_offset, SEEK_SET);
+    if (seek_amount < 0) {
+        seaf_warning("CDC: failed to seek %s\n", filename);
+    } else if (seek_amount < chunk_offset) {
+        seaf_warning("CDC: failed to seek %s by %d\n", filename, chunk_offset);
+    }
+
+    int ret = file_chunk_cdc (fd_src, file_descr, crypt, expected_size,  write_data);
+
+    /*
+    for (i = 0; i < file_descr->block_nr; i++) {
+        rawdata_to_hex(file_descr->blk_sha1s + i * CHECKSUM_LENGTH, buf, CHECKSUM_LENGTH);
+        buf[CHECKSUM_LENGTH] = '\0';
+        seaf_warning("[CDCDUMP] %d, %s\n", i, buf);
+    }
+    */
+
+    /* HACK: We currently need to flush all modified pages in order for Duet to
+     * reliabily deliver modify events for now. This requirement will hopefully
+     * be loosened later (perhaps with extensions to the duet interface.
+     */
+    fsync(fd_src);
     close (fd_src);
     return ret;
 }

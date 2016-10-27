@@ -67,6 +67,11 @@ int pgpipe (ccnet_pipe_t handles[2]);
 
 #endif
 
+extern gint64 num_bytes_read;
+extern gint64 num_bytes_written;
+extern gint64 time_spent_reading;
+extern gint64 time_spent_writing;
+
 #define pipereadn(a,b,c) recvn((a),(b),(c))
 #define pipewriten(a,b,c) sendn((a),(b),(c))
 

@@ -11,12 +11,14 @@ enum {
     WT_EVENT_ATTRIB,
     WT_EVENT_OVERFLOW,
     WT_EVENT_SCAN_DIR,
+    WT_EVENT_DUET_CREATE_OR_UPDATE
 };
 
 typedef struct WTEvent {
     int ev_type;
     char *path;
     char *new_path;             /* only used by rename event */
+    unsigned long idx;
 
     /* For CREATE_OR_UPDATE events, if a partial commit was created when
      * adding files recursively, the remaining files will be cached in
@@ -51,6 +53,12 @@ typedef struct WTStatus {
      */
     pthread_mutex_t ap_q_lock;
     GQueue *active_paths;
+
+    /* HACK: Provide acccess to the DUET hints from the WTStatus. This still
+     * needs to be carefully examined for correct operation in all cases.
+     */
+    pthread_mutex_t duet_hint_mutex;
+    GHashTable *filename_to_offset_hash;
 } WTStatus;
 
 WTStatus *create_wt_status (const char *repo_id);

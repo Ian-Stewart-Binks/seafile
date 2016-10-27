@@ -1066,7 +1066,7 @@ int add_to_index(const char *repo_id,
 #endif
 #endif  /* 0 */
 
-    if (index_cb (repo_id, version, full_path, sha1, crypt, TRUE) < 0) {
+    if (index_cb (repo_id, version, path, full_path, sha1, crypt, TRUE) < 0) {
         free (ce);
         return -1;
     }

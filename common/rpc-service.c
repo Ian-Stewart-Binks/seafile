@@ -2,6 +2,7 @@
 
 #include "common.h"
 #include <glib/gstdio.h>
+#include <glib.h>
 #include <ctype.h>
 
 #include <sys/stat.h>
@@ -31,6 +32,9 @@
 
 #endif  /* SEAFILE_SERVER */
 
+gint64 global_timestamp;
+gint64 metadata_load_time;
+gint64 setup_time;
 
 /* -------- Utilities -------- */
 static GObject*
@@ -348,7 +352,7 @@ seafile_download (const char *repo_id,
 
     if (!wt_parent) {
         g_set_error (error, SEAFILE_DOMAIN, SEAF_ERR_BAD_ARGS,
-                     "Worktre must be specified");
+                     "Worktree must be specified");
         return NULL;
     }
 
@@ -406,6 +410,40 @@ seafile_get_clone_tasks (GError **error)
     g_list_free (tasks);
     return ret;
 }
+
+/**
+ * seafile_get_debug_timers:
+ *
+ * Get the values of the debug timers.
+ *
+ * we use char* because the boilerplate needed to create a GObject class to
+ * do what we need is ridiculous.
+ */
+char *
+seafile_get_debug_timers (GError **error)
+{
+  gchar *timer_val;
+  timer_val = g_strdup_printf("bytes_read=%ld\n"
+                       "bytes_written=%ld\n"
+                       "chunk_bytes=%ld\n"
+                       "chunk_time=%ld\n"
+                       "global_time=%ld\n"
+                       "setup_time=%ld\n"
+                       "meta_time=%ld\n",
+            num_bytes_read, num_bytes_written, num_bytes_read_for_chunking,
+            time_spent_chunking, g_get_monotonic_time() - global_timestamp,
+            setup_time, metadata_load_time);
+
+  num_bytes_read = 0;
+  num_bytes_written = 0;
+  num_bytes_read_for_chunking = 0;
+  time_spent_chunking = 0;
+  metadata_load_time = 0;
+  global_timestamp = g_get_monotonic_time();
+
+  return timer_val;
+}
+
 
 int
 seafile_sync (const char *repo_id, const char *peer_id, GError **error)

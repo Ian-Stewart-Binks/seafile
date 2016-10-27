@@ -13,6 +13,9 @@ AM_CFLAGS = -DPKGDATADIR=\"$(pkgdatadir)\" \
 	@CURL_CFLAGS@ \
 	@BPWRAPPER_CFLAGS@ \
 	-Wall
+	-pg \
+	-fno-omit-frame-pointer \
+	-lduet
 
 bin_PROGRAMS =
 if !SERVER_ONLY

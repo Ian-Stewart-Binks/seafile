@@ -417,6 +417,7 @@ extern int remove_file_from_index(struct index_state *, const char *path);
 typedef int (*IndexCB) (const char *repo_id,
                         int version,
                         const char *path,
+                        const char *full_path,
                         unsigned char sha1[],
                         struct SeafileCrypt *crypt,
                         gboolean write_data);
