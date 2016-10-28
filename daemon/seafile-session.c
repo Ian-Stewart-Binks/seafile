@@ -27,8 +27,6 @@
 #include "seaf-utils.h"
 #include "log.h"
 
-#include "client-migrate.h"
-
 #include "seafile-rpc.h"
 
 #define MAX_THREADS 50

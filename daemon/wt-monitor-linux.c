@@ -565,8 +565,6 @@ process_duet_events (SeafWTMonitorPriv *priv) {
     char *repo_id;
 
     WTStatus *status = NULL;
-    struct duet_item duet_events[FETCH_ITEMS];
-    int num_events;
     int tfd;
 
     int num_events = FETCH_ITEMS;
@@ -787,7 +785,6 @@ add_watch (SeafWTMonitorPriv *priv, const char *repo_id, const char *worktree)
     tfd = duet_register(SEAFILE_DUET_TASK_NAME, regmask, worktree);
     if (tfd <= 0) {
         seaf_warning ("[wt_duet] failed to register with duet.\n");
-        close_duet_dev(priv->duet_fd);
         return -1;
     }
 
