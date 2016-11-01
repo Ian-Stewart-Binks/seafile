@@ -50,7 +50,9 @@ WTStatus *create_wt_status (const char *repo_id)
     status->filename_to_offset_hash = g_hash_table_new_full(g_str_hash,
                                                             g_str_equal,
                                                             g_free, NULL);
-
+    status->filename_to_live_block_hash = g_hash_table_new_full(g_str_hash,
+                                                                g_str_equal,
+                                                                g_free, NULL);
     /* The monitor thread always holds a reference to this status
      * until it's unwatched
      */
@@ -74,6 +76,7 @@ static void free_wt_status (WTStatus *status)
     pthread_mutex_destroy (&status->q_lock);
     pthread_mutex_destroy (&status->duet_hint_mutex);
     g_hash_table_destroy(status->filename_to_offset_hash);
+    g_hash_table_destroy(status->filename_to_live_block_hash);
     g_free (status);
 }
 

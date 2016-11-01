@@ -1,4 +1,5 @@
 /* -*- Mode: C; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+#define _GNU_SOURCE
 
 #include "common.h"
 
@@ -8,6 +9,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -481,6 +484,8 @@ cleanup_job_done (void *vdata)
     }
 
     // We consider this the start of the program.
+	finished = 0;
+	num_files_chunked = 0;
     global_timestamp = g_get_monotonic_time();
     setup_time = g_get_monotonic_time() - setup_time;
     num_bytes_read = 0;
@@ -488,6 +493,8 @@ cleanup_job_done (void *vdata)
     num_bytes_read_for_chunking = 0;
     time_spent_chunking = 0;
     metadata_load_time = 0;
+    cpu_user_timestamp = 0;
+    cpu_sys_timestamp = 0;
 
     /* Must be after wt monitor, since we may add watch to repo worktree. */
     if (seaf_repo_manager_start (session->repo_mgr) < 0) {

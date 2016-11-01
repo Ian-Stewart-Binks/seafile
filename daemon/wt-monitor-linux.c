@@ -461,6 +461,43 @@ out:
     return ret;
 }
 
+#define PRINT_STATE(mask) \
+    seaf_warning("    Events: %s%s%s%s\n", \
+                ((mask & DUET_PAGE_ADDED) ? "ADDED " : ""), \
+                ((mask & DUET_PAGE_REMOVED) ? "REMOVED " : ""), \
+                ((mask & DUET_PAGE_DIRTY) ? "DIRTY " : ""), \
+                ((mask & DUET_PAGE_FLUSHED) ? "FLUSHED " : ""));
+
+void print_duet_event(struct duet_item *duet_events, int num_events) {
+    int i;
+    char * temp_path;
+    struct duet_uuid duet_uuid;
+    seaf_warning("CDC-PRINT_EVENT: start %d\n", num_events);
+    for (i = 0; i < num_events; i++) {
+        duet_uuid = duet_events[i].uuid;
+        temp_path = duet_get_path(duet_uuid);
+
+        seaf_warning("CDC-PRINT_EVENT: path = %s\n", temp_path);
+        seaf_warning("CDC-PRINT_EVENT: duet_uuid = %lu\n", duet_events[i].uuid);
+        seaf_warning("CDC-PRINT_EVENT: tid = %lu\n", duet_events[i].uuid.tid);
+        seaf_warning("CDC-PRINT_EVENT: uuid = %lu\n", UUID_IDX(duet_events[i].uuid));
+        seaf_warning("CDC-PRINT_EVENT: duet_offset = %lu\n", duet_events[i].idx << 12);
+        PRINT_STATE(duet_events[i].state);
+        //seaf_warning("CDC-PRINT_EVENT: state = %s\n", duet_events[i].state);
+    }
+    seaf_warning("CDC-PRINT_EVENT: stop %d\n", num_events);
+}
+
+void merge_garrays(GArray *array_1, GArray *array_2) {
+
+  int i;
+  uint64_t elem;
+  for (i = 0; i < array_2->len; i++) {
+    elem = g_array_index(array_2, uint64_t, i);
+    g_array_append_val(array_1, elem);
+  }
+}
+
 static void duet_events_to_wtevents(struct duet_item *duet_events,
                                     int num_events,
                                     SeafWTMonitorPriv *priv,
@@ -471,6 +508,8 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
 	char *temp_path = "/";
     GHashTable *uuid_to_path_hash = NULL;
     GHashTable *uuid_to_offset_hash = NULL;
+    GHashTable *uuid_to_largest_offset_hash = NULL;
+    GHashTable *uuid_to_live_block_hash = NULL;
     GHashTableIter iter;
     gpointer key, value;
     gchar *path;
@@ -478,7 +517,6 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
     uint64_t duet_offset;
     unsigned long long uuid;
     struct duet_uuid duet_uuid;
-
     uuid_to_path_hash = g_hash_table_new_full(g_direct_hash,
                                               g_direct_equal,
                                               NULL, g_free);
@@ -487,6 +525,15 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
                                                 g_direct_equal,
                                                 NULL, NULL);
 
+    uuid_to_largest_offset_hash = g_hash_table_new_full(g_direct_hash,
+                                                        g_direct_equal,
+                                                        NULL, NULL);
+    
+    uuid_to_live_block_hash = g_hash_table_new_full(g_direct_hash,
+                                                    g_direct_equal,
+                                                    NULL, NULL);
+
+	//print_duet_event(duet_events, num_events);
     for (i = 0; i < num_events; i++) {
         duet_uuid = duet_events[i].uuid;
         uuid = UUID_IDX(duet_uuid);
@@ -496,10 +543,10 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
                                              
         // Get the name for this UUID if we don't already have it.
         if (path == NULL) {
-            if (duet_events[i].state & DUET_PAGE_DIRTY) {
+            if ((duet_events[i].state & DUET_PAGE_FLUSHED) || (duet_events[i].state & DUET_PAGE_DIRTY)) {
                 temp_path = duet_get_path(duet_uuid);
                 if (temp_path == NULL) {
-                    seaf_warning ("Duet failed to get path of file.\n");
+                    seaf_warning ("[wt mon] Duet failed to get path of file.\n");
                     continue;
                 }
             }
@@ -520,21 +567,56 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
                                 (gpointer) duet_offset);
         }
 
+        // Set the largest offset we've seen for this UUID.
+        if (g_hash_table_lookup_extended(uuid_to_largest_offset_hash,
+                                         (gconstpointer) uuid,
+                                         NULL, (void **) &offset)) {
+            if (offset < duet_offset) {
+                g_hash_table_replace(uuid_to_largest_offset_hash, (gpointer) uuid,
+                                     (gpointer) duet_offset);
+            }
+        } else {
+            g_hash_table_insert(uuid_to_largest_offset_hash, (gpointer) uuid,
+                                (gpointer) duet_offset);
+        }
+        
         //seaf_warning ("[Duet]: Modified %s flags %x at offset %d.\n",
         //              path, duet_events[i].state, duet_events[i].idx);
         // duet_set_done(priv->duet_fd, tid,
     }
 
+    g_hash_table_iter_init(&iter, uuid_to_largest_offset_hash);
+    GArray *live_block_list;
+    uint64_t largest_duet_offset;
+    while(g_hash_table_iter_next (&iter, &key, &value)) {
+        uuid = (uint64_t) key;
+        live_block_list = g_array_new(1, 1, sizeof(uint64_t));
+        g_hash_table_insert(uuid_to_live_block_hash, (gpointer) uuid, (gpointer) live_block_list);
+        path = (gchar *) g_hash_table_lookup(uuid_to_path_hash,
+                                             (gconstpointer) uuid);
+    }
+
+    for (i = 0; i < num_events; i++) { 
+        duet_uuid = duet_events[i].uuid;
+        uuid = UUID_IDX(duet_uuid);
+        duet_offset = duet_events[i].idx << 12;
+        path = (gchar *) g_hash_table_lookup(uuid_to_path_hash,
+                                             (gconstpointer) uuid);
+        g_hash_table_lookup_extended(uuid_to_live_block_hash, (gconstpointer) uuid, NULL, (void **) &live_block_list); 
+        g_array_append_val(live_block_list, duet_offset);
+    }
 
     // Now generate internal events based off of the duet events we found.
     g_hash_table_iter_init(&iter, uuid_to_path_hash);
+    int size;
+    GArray *old_list;
     pthread_mutex_lock(&status->duet_hint_mutex);
     while (g_hash_table_iter_next (&iter, &key, &value)) {
         uuid = (uint64_t) key;
         path = (gchar *) value;
-
+        size = g_hash_table_lookup(uuid_to_largest_offset_hash, uuid);
         duet_offset = (uint64_t) g_hash_table_lookup(uuid_to_offset_hash, uuid);
-
+        live_block_list = (GArray *) g_hash_table_lookup(uuid_to_live_block_hash, uuid);
         // Set the lowest offset we've seen for this UUID.
         if (g_hash_table_lookup_extended(status->filename_to_offset_hash,
                                          path, NULL, (void **) &offset)) {
@@ -548,13 +630,29 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
                                 (gpointer) g_strdup(path),
                                 (gpointer) duet_offset);
         }
+
+        if (g_hash_table_lookup_extended(status->filename_to_live_block_hash,
+                                         path, NULL, (void **) &old_list)) {
+            merge_garrays(old_list, live_block_list);
+            g_hash_table_replace(status->filename_to_live_block_hash,
+                                    (gpointer) g_strdup(path),
+                                    (gpointer) old_list);
+
+        } else {
+           g_hash_table_insert(status->filename_to_live_block_hash,
+                                   (gpointer) g_strdup(path),
+                                   (gpointer) live_block_list);
+        }
+
     }
     pthread_mutex_unlock(&status->duet_hint_mutex);
 
     // Free the memory used for the UUID -> path hash.
     g_hash_table_destroy(uuid_to_path_hash);
     g_hash_table_destroy(uuid_to_offset_hash);
+    g_hash_table_destroy(uuid_to_largest_offset_hash);
 }
+
 
 static gboolean
 process_duet_events (SeafWTMonitorPriv *priv) {
@@ -566,10 +664,11 @@ process_duet_events (SeafWTMonitorPriv *priv) {
 
     WTStatus *status = NULL;
     int tfd;
+    int ret;
 
     int num_events = FETCH_ITEMS;
     int bufsize = num_events * sizeof(struct duet_item);
-    struct duet_item *duet_events = malloc(bufsize);
+    struct duet_item *duet_events = calloc(1, bufsize);
 
 
     // Check for duet events.
@@ -580,33 +679,35 @@ process_duet_events (SeafWTMonitorPriv *priv) {
 
         inotify_fd = (int)(long)g_hash_table_lookup (priv->handle_hash, repo_id);
         if (!inotify_fd) {
-            seaf_warning ("Inotify FD not found.\n");
+            seaf_warning ("[wt mon] Inotify FD not found.\n");
             return FALSE;
         }
 
         info = g_hash_table_lookup (priv->info_hash, (gpointer)(long)inotify_fd);
         if (!info) {
-            seaf_warning ("Repo watch info not found.\n");
+            seaf_warning ("[wt mon] Repo watch info not found.\n");
             return FALSE;
         }
         status = info->status;
 
         do {
-            num_events = FETCH_ITEMS;
-            if (!read(tfd, duet_events, bufsize)) {
-                seaf_warning ("Duet fetch failed.\n");
+            ret = read(tfd, duet_events, bufsize);
+			// seaf_warning("[wt mon] Read %d duet events\n", ret);
+            if (ret < 0 && errno != EAGAIN) {
+                seaf_warning ("[wt mon] Duet fetch failed.\n");
                 return FALSE;
             }
 
-            duet_events_to_wtevents(duet_events, num_events, priv, status, info, tfd);
-        } while (num_events != 0);
-    }
+            if (ret == 0 || errno == EAGAIN) break;
 
+            duet_events_to_wtevents(duet_events, ret / sizeof(struct duet_item), priv, status, info, tfd);
+        } while (ret == bufsize);
+    }
+    errno = 0;
     free(duet_events);
 
     return TRUE;
 }
-
 
 static void *
 wt_monitor_job_linux (void *vmonitor)
@@ -781,13 +882,13 @@ add_watch (SeafWTMonitorPriv *priv, const char *repo_id, const char *worktree)
     /* A special event indicates repo-mgr to scan the whole worktree. */
     add_event_to_queue (info->status, WT_EVENT_SCAN_DIR, "", NULL);
 
-    regmask = DUET_PAGE_DIRTY;
-    tfd = duet_register(SEAFILE_DUET_TASK_NAME, regmask, worktree);
-    if (tfd <= 0) {
-        seaf_warning ("[wt_duet] failed to register with duet.\n");
-        return -1;
-    }
-
+        seaf_warning ("[wt mon] registering with duet.\n");
+        regmask = DUET_PAGE_DIRTY | DUET_PAGE_FLUSHED | DUET_FD_NONBLOCK;
+        tfd = duet_register(SEAFILE_DUET_TASK_NAME, regmask, worktree);
+        if (tfd <= 0) {
+            seaf_warning ("[wt_duet] failed to register with duet. worktree: %s\n", worktree);
+            return -1;
+        }
     /* Register the working directory with Duet. */
     pthread_mutex_lock (&priv->hash_lock);
     g_hash_table_insert (priv->duet_hash,
@@ -841,6 +942,7 @@ static int handle_rm_repo (SeafWTMonitor *monitor,
     int inotify_fd = (int)(long)inotify_handle;
     int duet_tfd = (int)(long)duet_handle;
 
+	seaf_warning ("[wt mon] deregistering with duet.\n");
     close (inotify_fd);
     if (close(duet_tfd) < -1) {
         seaf_warning ("[wt mon] failed to deregister tfd=%d with duet.\n",

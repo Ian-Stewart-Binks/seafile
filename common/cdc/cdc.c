@@ -30,6 +30,16 @@
 gint64 num_bytes_read_for_chunking;
 gint64 time_spent_chunking;
 
+static void print_live_block_list(char *path, GArray *array) {
+  int i;
+  uint64_t elem;
+  for (i = 0; i < array->len; i++) {
+    elem = g_array_index(array, uint64_t, i);
+    seaf_warning("CDC-EARLY: live list: %d\n", elem);
+  }
+}
+
+
 static int default_write_chunk (CDCDescriptor *chunk_descr)
 {
     char filename[NAME_MAX_SZ];
@@ -40,6 +50,7 @@ static int default_write_chunk (CDCDescriptor *chunk_descr)
     rawdata_to_hex (chunk_descr->checksum, chksum_str, CHECKSUM_LENGTH);
     snprintf (filename, NAME_MAX_SZ, "./%s", chksum_str);
     fd_chunk = g_open (filename, O_RDWR | O_CREAT | O_BINARY, 0644);
+    seaf_warning("CDC: Wrote to file with name %s\n", filename);
     if (fd_chunk < 0)
         return -1;    
     
@@ -74,7 +85,11 @@ int init_cdc_file_descriptor (int fd,
 
     /* Allocate space for the chunk offsets. */
     file_descr->blk_offsets = (uint64_t *)calloc (sizeof(uint64_t), max_block_nr);
-
+    
+    /* Allocate space for live chunks based on corresponding offset, calloc ensures that no
+       chunk is initially considered live
+       */
+    file_descr->live_chunk_list = (uint8_t *)calloc (sizeof(uint8_t), max_block_nr);
     file_descr->max_block_nr = max_block_nr;
 
     return 0;
@@ -124,7 +139,7 @@ int file_chunk_cdc(int fd_src,
 
     gint64 tick;
     tick = g_get_monotonic_time();
-
+    seaf_warning("About to chunk\n");
     // Get the running SHA1 from preexisting blocks.
     for (i = 0; i < file_descr->block_nr; i++) {
         SHA1_Update(&file_ctx, file_descr->blk_sha1s + i * CHECKSUM_LENGTH, 20);
@@ -227,6 +242,7 @@ int file_chunk_cdc(int fd_src,
     free (buf);
 
     time_spent_chunking += (g_get_monotonic_time() - tick);
+    seaf_warning("Time spent chunking %d", time_spent_chunking);
     return 0;
 }
 
@@ -315,6 +331,312 @@ int incremental_filename_chunk_cdc(const char *filename,
     fsync(fd_src);
     close (fd_src);
     return ret;
+}
+
+
+int meets_early_stop_criteria(uint64_t offset, uint64_t *offsets, int num_blocks) {
+  if (!offsets) {
+    return 0;
+  }
+  int i;
+  for (i = 0; i < num_blocks; i++) {
+    if (offsets[i] == offset) {
+      return 1;
+    }
+  }
+
+  return 0;
+}
+
+int early_stop_file_chunk_cdc(int fd_src,
+                   CDCFileDescriptor *file_descr,
+                   SeafileCrypt *crypt,
+                   uint64_t expected_size,
+                   gboolean write_data,
+                   uint64_t *offsets,
+                   uint64_t num_blocks)
+{
+    char *buf;
+    uint32_t buf_sz;
+    SHA_CTX file_ctx;
+    CDCDescriptor chunk_descr;
+    int i;
+    int early_stop_offset;
+    SHA1_Init (&file_ctx);
+
+    // Get the running SHA1 from preexisting blocks.
+    for (i = 0; i < file_descr->block_nr; i++) {
+        SHA1_Update(&file_ctx, file_descr->blk_sha1s + i * CHECKSUM_LENGTH, 20);
+    }
+
+    uint32_t block_min_sz = file_descr->block_min_sz;
+    uint32_t block_mask = file_descr->block_sz - 1;
+
+    int fingerprint = 0;
+    int offset = file_descr->file_size;
+    int ret = 0;
+    int tail, cur, rsize;
+
+    buf_sz = file_descr->block_max_sz;
+    buf = chunk_descr.block_buf = malloc (buf_sz);
+    if (!buf) {
+        return -1;  
+    }
+    /* buf: a fix-sized buffer.
+     * cur: data behind (inclusive) this offset has been scanned.
+     *      cur + 1 is the bytes that has been scanned.
+     * tail: length of data loaded into memory. buf[tail] is invalid.
+     */
+    tail = cur = 0;
+    while (1) {
+        if (tail < block_min_sz) {
+            rsize = block_min_sz - tail + READ_SIZE;
+        } else {
+            rsize = (buf_sz - tail < READ_SIZE) ? (buf_sz - tail) : READ_SIZE;
+        }
+        ret = readn (fd_src, buf + tail, rsize);
+        if (ret < 0) {
+            seaf_warning ("CDC: failed to read: %s.\n", strerror(errno));
+            free (buf);
+            return -1;
+        }
+        tail += ret;
+        file_descr->file_size += ret;
+        num_bytes_read_for_chunking += ret;
+
+        if (file_descr->file_size > expected_size) {
+            seaf_warning ("File size changed while chunking. %d > %d\n", file_descr->file_size, expected_size);
+            free (buf);
+            return -1;
+        }
+
+        /* We've read all the data in this file. Output the block immediately
+         * in two cases:
+         * 1. The data left in the file is less than block_min_sz;
+         * 2. We cannot find the break value until the end of this file.
+         */
+        if (tail < block_min_sz || cur >= tail) {
+            if (tail > 0) {
+                if (file_descr->block_nr == file_descr->max_block_nr) {
+                    seaf_warning ("Block id array is not large enough, bail out.\n");
+                    free (buf);
+                    return -1;
+                }
+                WRITE_CDC_BLOCK (tail, write_data);
+                if (meets_early_stop_criteria(offset, offsets, num_blocks)) {
+                  return expected_size;
+                }
+
+            }
+            break;
+        }
+
+        /* 
+         * A block is at least of size block_min_sz.
+         */
+        if (cur < block_min_sz - 1)
+            cur = block_min_sz - 1;
+
+        while (cur < tail) {
+            fingerprint = (cur == block_min_sz - 1) ?
+                finger(buf + cur - BLOCK_WIN_SZ + 1, BLOCK_WIN_SZ) :
+                rolling_finger (fingerprint, BLOCK_WIN_SZ, 
+                                *(buf+cur-BLOCK_WIN_SZ), *(buf + cur));
+
+            /* get a chunk, write block info to chunk file */
+            if (((fingerprint & block_mask) ==  ((BREAK_VALUE & block_mask)))
+                || cur + 1 >= file_descr->block_max_sz)
+            {
+                if (file_descr->block_nr == file_descr->max_block_nr) {
+                    seaf_warning ("Block id array is not large enough, bail out.\n");
+                    free (buf);
+                    return -1;
+                }
+
+                WRITE_CDC_BLOCK (cur + 1, write_data);
+
+                if (meets_early_stop_criteria(offset, offsets, num_blocks)) {
+                    return offset;
+                }
+
+                break;
+            } else {
+                cur ++;
+            }
+        }
+    }
+
+    SHA1_Final (file_descr->file_sum, &file_ctx);
+
+    free (buf);
+
+    return expected_size;
+}
+
+void write_out_intermediate_chunks(CDCFileDescriptor *file_descr, char **existing_blocks, int start_offset, int end_offset, uint64_t *offsets) {
+  int i;
+  for (i = start_offset; i < end_offset; i++) {
+    hex_to_rawdata (existing_blocks[i],
+                    file_descr->blk_sha1s + i * CHECKSUM_LENGTH, 20);
+    // Shouldn't be 'i', should be block number
+    file_descr->blk_offsets[i] = offsets[i];
+  }
+}
+
+void print_live_chunk_list(CDCFileDescriptor *file_descr, uint64_t num_chunks) {
+  int i;
+  char str[num_chunks];
+  memset(str, 0, num_chunks);
+  for (i = 0; i < num_chunks; i++) {
+     if (file_descr->live_chunk_list[i]) {
+       strcat(str, "1");
+     } else {
+       strcat(str, "0");
+     }
+  }
+
+  seaf_warning("CDC-EARLY: chunk list: %s\n", str);
+}
+
+void populate_live_list(CDCFileDescriptor *file_descr, GArray *live_blocks, uint64_t *offsets, uint64_t num_chunks) {
+  int i, j, chunk_index;
+  uint64_t elem;
+  if (live_blocks == NULL || offsets == NULL) {
+    for (chunk_index = 0; chunk_index < file_descr->max_block_nr; chunk_index++) {
+      file_descr->live_chunk_list[chunk_index] = 1;
+    }
+    //print_live_chunk_list(file_descr, file_descr->max_block_nr);
+    return;
+  }
+
+  for (i = 0; i < live_blocks->len; i++) {
+    elem = g_array_index(live_blocks, uint64_t, i);
+    for (chunk_index = num_chunks - 1; chunk_index > -1; chunk_index--) {
+      if (offsets[chunk_index] <= elem) {
+        file_descr->live_chunk_list[chunk_index] = 1;
+        break;
+      }
+    }
+  }
+
+  file_descr->live_chunk_list[num_chunks - 1] = 1;
+  //print_live_chunk_list(file_descr, num_chunks);
+
+}
+
+uint64_t get_chunk_nr(CDCFileDescriptor *file_descr, uint64_t old_offset, uint64_t *offsets, uint64_t num_chunks) {
+
+  int nr;
+  for (nr = 0; nr < num_chunks; nr++) {
+    if (old_offset == offsets[nr]) {
+      return nr;
+    }
+  }
+  return -1;
+}
+
+
+/**
+  * 1. Seek to the first block of the file.
+  * 2. Begin chunking.
+  * 3. Once criteria met, stop chunking.
+  * 4. Seek to next block of file.
+  * 5. Return to step 2.
+ **/
+int early_stop_filename_chunk_cdc(const char *filename,
+                                  CDCFileDescriptor *file_descr,
+                                  struct SeafileCrypt *crypt,
+                                  uint64_t *offsets,
+                                  uint64_t chunk_offset,
+                                  char **existing_blocks,
+                                  GArray *live_blocks,
+                                  int num_unchanged,
+                                  gboolean write_data,
+                                  uint64_t num_chunks) {
+    gint64 seek_amount;
+    int i;
+    char buf[100];
+    gint64 tick;
+    uint64_t old_chunk_offset = 0;
+    int fd_src = seaf_util_open (filename, O_RDONLY | O_BINARY);
+    if (fd_src < 0) {
+        seaf_warning ("CDC-EARLY: failed to open %s.\n", filename);
+        return -1;
+    }
+
+    // Perform some intialization of the CDC struct.
+    SeafStat sb;
+    if (seaf_fstat (fd_src, &sb) < 0) {
+        seaf_warning ("CDC-EARLY: failed to stat: %s.\n", strerror(errno));
+        return -1;
+    }
+    uint64_t expected_size = sb.st_size;
+    init_cdc_file_descriptor (fd_src, expected_size, file_descr);
+
+    tick = g_get_monotonic_time();
+    file_descr->block_nr = num_unchanged;
+    if (offsets != NULL && num_unchanged != 0) {
+        file_descr->file_size = offsets[num_unchanged - 1];
+    }
+    
+
+    populate_live_list(file_descr, live_blocks, offsets, num_chunks);
+
+    int num_blocks = file_descr->max_block_nr;
+
+    int old_chunk_nr = 0;
+    int curr_chunk_nr = 0;
+
+    // Chunk until the final offset that has been returned is larger than the expected
+    // size of the file
+    while (chunk_offset < expected_size) { /** TODO **/
+        while (file_descr->live_chunk_list[curr_chunk_nr] != 1 && curr_chunk_nr < num_chunks) {
+          curr_chunk_nr++;
+          file_descr->block_nr++;
+        }
+
+        if (offsets == NULL) {
+          chunk_offset = old_chunk_offset;
+        } else {
+          chunk_offset = offsets[curr_chunk_nr];
+        }
+        file_descr->file_size = chunk_offset; 
+        // Write out the chunks between the last live chunk and the next live chunk
+        write_out_intermediate_chunks(file_descr, existing_blocks, old_chunk_nr, curr_chunk_nr, offsets);
+        seek_amount = seaf_util_lseek(fd_src, chunk_offset, SEEK_SET);
+
+        if (seek_amount < 0) {
+            seaf_warning("CDC-EARLY: failed to seek %s\n", filename);
+        } else if (seek_amount < chunk_offset) {
+            seaf_warning("CDC-EARLY: failed to seek %s by %d\n", filename, chunk_offset);
+        }
+
+        old_chunk_offset = early_stop_file_chunk_cdc (fd_src, file_descr, crypt, expected_size, write_data, offsets, num_chunks);
+        if (old_chunk_offset == expected_size) {
+          goto cleanup;
+        }
+        if (old_chunk_offset == -1) {
+          seaf_warning("CDC-EARLY: early_stop_file_chunk_cdc failed (-1)\n");
+          return -1;
+        }
+        old_chunk_nr = curr_chunk_nr = get_chunk_nr(file_descr, old_chunk_offset, offsets, num_chunks);
+        if (old_chunk_nr == -1) {
+            old_chunk_nr = 0;
+            curr_chunk_nr = 0;
+        }
+
+    }
+cleanup:
+    time_spent_chunking += (g_get_monotonic_time() - tick);
+    seaf_warning("Time spent chunking %d\n", time_spent_chunking);
+
+    /* HACK: We currently need to flush all modified pages in order for Duet to
+     * reliabily deliver modify events for now. This requirement will hopefully
+     * be loosened later (perhaps with extensions to the duet interface.
+     */
+    fsync(fd_src);
+    close (fd_src);
+    return 0;
 }
 
 void cdc_init ()

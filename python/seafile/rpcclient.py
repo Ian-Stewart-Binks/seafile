@@ -135,6 +135,21 @@ class SeafileRpcClient(ccnet.RpcClientBase):
         pass
     get_debug_timers = seafile_get_debug_timers
 
+    @searpc_func("string", [])
+    def seafile_enable_auto_sync():
+        pass
+    enable_auto_sync = seafile_enable_auto_sync
+
+    @searpc_func("string", [])
+    def seafile_disable_auto_sync():
+        pass
+    disable_auto_sync = seafile_disable_auto_sync
+
+    @searpc_func("string", [])
+    def seafile_get_finished():
+            pass
+    get_finished = seafile_get_finished
+
     @searpc_func("object", ["string"])
     def seafile_find_transfer_task(repo_id):
         pass

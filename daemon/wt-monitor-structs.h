@@ -59,6 +59,7 @@ typedef struct WTStatus {
      */
     pthread_mutex_t duet_hint_mutex;
     GHashTable *filename_to_offset_hash;
+    GHashTable *filename_to_live_block_hash;
 } WTStatus;
 
 WTStatus *create_wt_status (const char *repo_id);

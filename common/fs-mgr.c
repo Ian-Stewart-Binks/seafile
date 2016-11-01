@@ -1,5 +1,5 @@
 /* -*- Mode: C; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
-
+#define _GNU_SOURCE
 #include "common.h"
 
 #include <ccnet.h>
@@ -17,6 +17,8 @@
 
 #include "seafile-session.h"
 #include "seafile-error.h"
+#include <sys/time.h>
+#include <sys/resource.h>
 #include "fs-mgr.h"
 #include "block-mgr.h"
 #include "utils.h"
@@ -824,12 +826,17 @@ out:
 
 #endif  /* SEAFILE_SERVER */
 
+uint64_t tv_to_ms(struct timeval tv) {
+    return (tv.tv_sec) * 1000 + (tv.tv_usec) / 1000;
+}
+
 int
 seaf_fs_manager_index_blocks (SeafFSManager *mgr,
                               const char *repo_id,
                               int version,
                               const char *path,
                               const char *full_path,
+                              GArray *live_blocks,
                               uint64_t offset,
                               unsigned char sha1[],
                               gint64 *size,
@@ -839,6 +846,7 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
 {
     SeafStat sb;
     CDCFileDescriptor cdc;
+    //seaf_warning("CDC-EARLY: seaf_fs_manager_index_blocks\n");
 
     SeafRepo *repo = NULL;
     SeafBranch *branch = NULL;
@@ -847,14 +855,17 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
     char *file_id = NULL;
     int num_unchanged = 0;
     char **existing_blocks = NULL;
+    //seaf_warning("CDC-EARLY: here\n");
 
     if (seaf_stat (full_path, &sb) < 0) {
         seaf_warning ("Bad file %s: %s.\n", full_path, strerror(errno));
         return -1;
     }
+    //seaf_warning("CDC-EARLY: here\n");
 
     g_return_val_if_fail (S_ISREG(sb.st_mode), -1);
 
+    //seaf_warning("CDC-EARLY: here\n");
     if (sb.st_size == 0) {
         /* handle empty file. */
         memset (sha1, 0, 20);
@@ -880,10 +891,12 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
             cdc.file_size = sb.st_size;
             if (split_file_to_block (repo_id, version, full_path, sb.st_size,
                                      crypt, &cdc, write_data) < 0) {
+                seaf_warning("CDC-EARLY: something happened\n");
                 return -1;
             }
         }
 #else
+    //seaf_warning("CDC-EARLY: here\n");
         cdc.block_sz = calculate_chunk_size (sb.st_size);
         cdc.block_min_sz = cdc.block_sz >> 2;
         cdc.block_max_sz = cdc.block_sz << 2;
@@ -891,7 +904,13 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
         memcpy (cdc.repo_id, repo_id, 36);
         cdc.version = version;
 
-        if (offset != 0) {
+        //seaf_warning("CDC-EARLY: here %p\n", live_blocks);
+        if (live_blocks == NULL) {
+          //seaf_warning("CDC-EARLY: seaf_fs_manager_index_blocks -> live blocks is null\n");
+        }
+        uint64_t num_chunks = 0;
+        if (offset != 0 || live_blocks) {
+            //seaf_warning("CDC-EARLY: seaf_fs_manager_index_blocks -> we're in\n");
             gint64 tick;
             tick = g_get_monotonic_time();
 
@@ -914,7 +933,7 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
                 goto start_chunking;
             }
             
-            // Get the file id for this path.
+            // Get the file id for rthis path.
             file_id = seaf_fs_manager_get_seafile_id_by_path (mgr, repo_id,
                                                     repo->version, commit->root_id,
                                                     path, NULL);
@@ -936,28 +955,31 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
 
             // We have the blocklist for the old version of the file.
             // Now use it the populate the chunks we know didn't change.
-            seaf_warning("[HASHDEBUG] seafile->n_blocks = %d\n", seafile->n_blocks);
-            seaf_warning("[HASHDEBUG] offset desired = %ld\n", offset);
+            //seaf_warning("[HASHDEBUG] seafile->n_blocks = %d\n", seafile->n_blocks);
+            //seaf_warning("[HASHDEBUG] offset desired = %ld\n", offset);
 
+            num_chunks = seafile->n_blocks;
             // NOTE: this loop will never allow us to retain all the blocks
             // the old version of the file, e.g. in the case of an append. This
             // is because the final block in a file generally only stops because
             // we've reached the end of the file, not because of a valid chunk
             // boundary. As such, we rechunk the last chunk + the appended data.
-            num_unchanged = 0;
-            while ((num_unchanged + 1 < seafile->n_blocks) &&
-                   (seafile->blk_offsets[num_unchanged + 1] < offset)) {
-                num_unchanged++;
-            }
+            //num_unchanged = 0;
+            //while ((num_unchanged + 1 < seafile->n_blocks) &&
+            //       (seafile->blk_offsets[num_unchanged + 1] < offset)) {
+            //    num_unchanged++;
+            //}
 
-            offset = seafile->blk_offsets[num_unchanged];
+            //offset = seafile->blk_offsets[num_unchanged];
             existing_blocks = seafile->blk_sha1s;
-            seaf_warning("[HASHDEBUG] first offset = %ld\n", offset);
+            //seaf_warning("[HASHDEBUG] first offset = %ld\n", offset);
 
+			//?seaf_warning("METADATA LOAD TIME INCREMENTED BY %d\n", tick);
             metadata_load_time += (g_get_monotonic_time() - tick);
         }
 
 start_chunking:
+        //seaf_warning("CDC-EARLY: seaf_fs_manager_index_blocks -> start chunking\n");
         if (commit) {
             seaf_commit_unref(commit);
         }
@@ -966,10 +988,14 @@ start_chunking:
             g_free(file_id);
         }
 
-        if (incremental_filename_chunk_cdc (full_path, &cdc, crypt,
-                                (seafile != NULL) ? seafile->blk_offsets : NULL,
-                                            offset, existing_blocks,
-                                            num_unchanged, write_data) < 0) {
+		struct rusage resource_usage;
+		getrusage(RUSAGE_THREAD, &resource_usage);
+		gint64 old_cpu_user_timestamp = tv_to_ms(resource_usage.ru_utime);
+		gint64 old_cpu_sys_timestamp = tv_to_ms(resource_usage.ru_stime);
+        if (early_stop_filename_chunk_cdc (full_path, &cdc, crypt,
+                                     (seafile != NULL) ? seafile->blk_offsets : NULL,
+                                                 offset, existing_blocks, live_blocks,
+                                                 num_unchanged, write_data, num_chunks) < 0) {
             seaf_warning ("Failed to chunk file with CDC.\n");
 
             if (seafile) {
@@ -978,6 +1004,14 @@ start_chunking:
 
             return -1;
         }
+		num_files_chunked++;
+
+        getrusage(RUSAGE_THREAD, &resource_usage);
+
+        cpu_user_timestamp += tv_to_ms(resource_usage.ru_utime) - old_cpu_user_timestamp;
+        cpu_sys_timestamp += tv_to_ms(resource_usage.ru_stime) - old_cpu_sys_timestamp;
+        output_num = resource_usage.ru_oublock;
+        input_num = resource_usage.ru_inblock;
 
         if (seafile) {
             seafile_unref (seafile);

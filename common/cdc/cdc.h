@@ -63,6 +63,10 @@ typedef struct _CDCFileDescriptor {
 
     /* Add tracking of chunk offsets to ease incremental chunking. */
     uint64_t *blk_offsets;
+
+    /* Add tracking of chunk livliness (whether they have been
+       affected by a modification */
+    uint8_t *live_chunk_list;
 } CDCFileDescriptor;
 
 typedef struct _CDCDescriptor {
@@ -87,6 +91,16 @@ int incremental_filename_chunk_cdc(const char *filename,
                        char **existing_blocks,
                        int num_unchanged,
                        gboolean write_data);
+int early_stop_filename_chunk_cdc(const char *filename,
+                                  CDCFileDescriptor *file_descr,
+                                  struct SeafileCrypt *crypt,
+                                  uint64_t *offsets,
+                                  uint64_t chunk_offset,
+                                  char **existing_blocks,
+                                  GArray *live_blocks,
+                                  int num_unchanged,
+                                  gboolean write_data,
+                                  uint64_t num_chunks);
 
 int filename_chunk_cdc(const char *filename,
                        CDCFileDescriptor *file_descr,

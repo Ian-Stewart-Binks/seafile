@@ -38,6 +38,8 @@
 #define CHECK_LOCKED_FILES_INTERVAL 10 /* 10s */
 #define CHECK_FOLDER_PERMS_INTERVAL 30 /* 30s */
 
+gint64 finished;
+
 enum {
     SERVER_SIDE_MERGE_UNKNOWN = 0,
     SERVER_SIDE_MERGE_SUPPORTED,
@@ -49,7 +51,7 @@ struct _ServerState {
     gboolean checking;
 };
 typedef struct _ServerState ServerState;
-
+extern gint64 global_timestamp;
 struct _HttpServerState {
     int http_version;
     gboolean checking;
@@ -115,6 +117,9 @@ static void on_repo_http_uploaded (SeafileSession *seaf,
 
 static inline void
 transition_sync_state (SyncTask *task, int new_state);
+
+gint64 num_files;
+gint64 num_files_chunked;
 
 static void sync_task_free (SyncTask *task);
 
@@ -674,7 +679,15 @@ transition_sync_state (SyncTask *task, int new_state)
                 notify_sync (task->repo);
         }
 
+        if (finished == 0 && num_files_chunked == num_files && task->state != SYNC_STATE_DONE && new_state == SYNC_STATE_DONE) {
+			global_timestamp = g_get_monotonic_time() - global_timestamp;
+			finished = 1;
+		}
         task->state = new_state;
+        seaf_message ("Repo '%s' sync state now '%s'.\n",
+                      task->repo->name,
+                      sync_state_str[task->state]);
+
         if (new_state == SYNC_STATE_DONE || 
             new_state == SYNC_STATE_CANCELED ||
             new_state == SYNC_STATE_ERROR) {
