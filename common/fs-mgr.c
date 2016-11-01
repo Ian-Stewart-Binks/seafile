@@ -830,6 +830,7 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
                               int version,
                               const char *path,
                               const char *full_path,
+                              uint8_t *live_blocks,
                               uint64_t offset,
                               unsigned char sha1[],
                               gint64 *size,
@@ -891,7 +892,7 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
         memcpy (cdc.repo_id, repo_id, 36);
         cdc.version = version;
 
-        if (offset != 0) {
+        if (offset != 0 || live_blocks) {
             gint64 tick;
             tick = g_get_monotonic_time();
 
@@ -966,10 +967,10 @@ start_chunking:
             g_free(file_id);
         }
 
-        if (incremental_filename_chunk_cdc (full_path, &cdc, crypt,
-                                (seafile != NULL) ? seafile->blk_offsets : NULL,
-                                            offset, existing_blocks,
-                                            num_unchanged, write_data) < 0) {
+        if (early_stop_filename_chunk_cdc (full_path, &cdc, crypt,
+                                     (seafile != NULL) ? seafile->blk_offsets : NULL,
+                                                 offset, existing_blocks, live_blocks,
+                                                 num_unchanged, write_data) < 0) {
             seaf_warning ("Failed to chunk file with CDC.\n");
 
             if (seafile) {
