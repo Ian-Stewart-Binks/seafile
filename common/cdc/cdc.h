@@ -97,7 +97,7 @@ int early_stop_filename_chunk_cdc(const char *filename,
                                   uint64_t *offsets,
                                   uint64_t chunk_offset,
                                   char **existing_blocks,
-                                  uint8_t *live_blocks,
+                                  GArray *live_blocks,
                                   int num_unchanged,
                                   gboolean write_data);
 

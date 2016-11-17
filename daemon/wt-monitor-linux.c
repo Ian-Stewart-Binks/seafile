@@ -461,6 +461,45 @@ out:
     return ret;
 }
 
+#define PRINT_STATE(mask) \
+    seaf_warning("    Events: %s%s%s%s\n", \
+                ((mask & DUET_PAGE_ADDED) ? "ADDED " : ""), \
+                ((mask & DUET_PAGE_REMOVED) ? "REMOVED " : ""), \
+                ((mask & DUET_PAGE_DIRTY) ? "DIRTY " : ""), \
+                ((mask & DUET_PAGE_FLUSHED) ? "FLUSHED " : ""));
+
+void print_duet_event(struct duet_item *duet_events, int num_events) {
+    int i;
+    char * temp_path;
+    struct duet_uuid duet_uuid;
+    seaf_warning("CDC-PRINT_EVENT: start %d\n", num_events);
+    for (i = 0; i < num_events; i++) {
+        duet_uuid = duet_events[i].uuid;
+        temp_path = duet_get_path(duet_uuid);
+
+        seaf_warning("CDC-PRINT_EVENT: path = %s\n", temp_path);
+        seaf_warning("CDC-PRINT_EVENT: duet_uuid = %lu\n", duet_events[i].uuid);
+        seaf_warning("CDC-PRINT_EVENT: tid = %lu\n", duet_events[i].uuid.tid);
+        seaf_warning("CDC-PRINT_EVENT: uuid = %lu\n", UUID_IDX(duet_events[i].uuid));
+        seaf_warning("CDC-PRINT_EVENT: duet_offset = %lu\n", duet_events[i].idx << 12);
+        PRINT_STATE(duet_events[i].state);
+        //seaf_warning("CDC-PRINT_EVENT: state = %s\n", duet_events[i].state);
+    }
+    seaf_warning("CDC-PRINT_EVENT: stop %d\n", num_events);
+}
+
+void merge_garrays(GArray *array_1, GArray *array_2) {
+  seaf_warning("CDC-EARLY: array_1 %p\n", array_1);
+  seaf_warning("CDC-EARLY: array_2 %p\n", array_2);
+
+  int i;
+  uint64_t elem;
+  for (i = 0; i < array_2->len; i++) {
+    elem = g_array_index(array_2, uint64_t, i);
+    g_array_append_val(array_1, elem);
+  }
+}
+
 static void duet_events_to_wtevents(struct duet_item *duet_events,
                                     int num_events,
                                     SeafWTMonitorPriv *priv,
@@ -481,7 +520,7 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
     uint64_t duet_offset;
     unsigned long long uuid;
     struct duet_uuid duet_uuid;
-
+    print_duet_event(duet_events, num_events);
     uuid_to_path_hash = g_hash_table_new_full(g_direct_hash,
                                               g_direct_equal,
                                               NULL, g_free);
@@ -546,7 +585,6 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
             if (path == NULL) {
               seaf_warning("empty path?\n");
             }
-            seaf_warning("inserting %lu for path %s\n", duet_offset, path);
             g_hash_table_insert(uuid_to_largest_offset_hash, (gpointer) uuid,
                                 (gpointer) duet_offset);
         }
@@ -557,41 +595,43 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
     }
 
     g_hash_table_iter_init(&iter, uuid_to_largest_offset_hash);
-    uint8_t *live_block_list;
+    GArray *live_block_list;
     uint64_t largest_duet_offset;
     while(g_hash_table_iter_next (&iter, &key, &value)) {
+        seaf_warning("Creating live block list\n");
         uuid = (uint64_t) key;
-        largest_duet_offset = (uint64_t) value;
-        live_block_list = malloc(sizeof(uint8_t) * (largest_duet_offset / 4096) + 1);
+        live_block_list = g_array_new(1, 1, sizeof(uint64_t));
         if (live_block_list == NULL) {
-          seaf_warning("live_block_list is null (requested size %d)\n", (largest_duet_offset / 4096) + 1);
+          seaf_warning("live_block_list is null\n");
         }
         g_hash_table_insert(uuid_to_live_block_hash, (gpointer) uuid, (gpointer) live_block_list);
         path = (gchar *) g_hash_table_lookup(uuid_to_path_hash,
                                              (gconstpointer) uuid);
-        print_live_block_list(path, live_block_list, (largest_duet_offset/4096 + 1));
     }
 
     for (i = 0; i < num_events; i++) { 
+        seaf_warning("populating live block list\n");
         duet_uuid = duet_events[i].uuid;
         uuid = UUID_IDX(duet_uuid);
         duet_offset = duet_events[i].idx << 12;
         path = (gchar *) g_hash_table_lookup(uuid_to_path_hash,
                                              (gconstpointer) uuid);
         g_hash_table_lookup_extended(uuid_to_live_block_hash, (gconstpointer) uuid, NULL, (void **) &live_block_list); 
-        live_block_list[duet_offset/4096] = 1;
+        g_array_append_val(live_block_list, duet_offset);
     }
+    seaf_warning("done populating\n");
 
     // Now generate internal events based off of the duet events we found.
     g_hash_table_iter_init(&iter, uuid_to_path_hash);
     int size;
+    GArray *old_list;
     pthread_mutex_lock(&status->duet_hint_mutex);
     while (g_hash_table_iter_next (&iter, &key, &value)) {
         uuid = (uint64_t) key;
         path = (gchar *) value;
         size = g_hash_table_lookup(uuid_to_largest_offset_hash, uuid);
         duet_offset = (uint64_t) g_hash_table_lookup(uuid_to_offset_hash, uuid);
-        live_block_list = (uint8_t) g_hash_table_lookup(uuid_to_live_block_hash, uuid);
+        live_block_list = (GArray *) g_hash_table_lookup(uuid_to_live_block_hash, uuid);
         // Set the lowest offset we've seen for this UUID.
         if (g_hash_table_lookup_extended(status->filename_to_offset_hash,
                                          path, NULL, (void **) &offset)) {
@@ -606,9 +646,23 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
                                 (gpointer) duet_offset);
         }
 
-        g_hash_table_insert(status->filename_to_live_block_hash,
-                                (gpointer) g_strdup(path),
-                                (gpointer) live_block_list);
+        if (g_hash_table_lookup_extended(status->filename_to_live_block_hash,
+                                         path, NULL, (void **) &old_list)) {
+            merge_garrays(old_list, live_block_list);
+            g_hash_table_replace(status->filename_to_live_block_hash,
+                                    (gpointer) g_strdup(path),
+                                    (gpointer) old_list);
+            seaf_warning("old value is %p\n", old_list);
+            print_live_block_list(path, old_list);
+
+        } else {
+           g_hash_table_insert(status->filename_to_live_block_hash,
+                                   (gpointer) g_strdup(path),
+                                   (gpointer) live_block_list);
+           seaf_warning("CDC-EARLY: inserting %p into %s\n", (gpointer) live_block_list, path);
+           print_live_block_list(path, live_block_list);
+        }
+
     }
     pthread_mutex_unlock(&status->duet_hint_mutex);
 
@@ -619,22 +673,21 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
     seaf_warning("CDC-EARLY: << duet_events_to_wt_events\n");
 }
 
-void print_live_block_list(char *path, uint8_t *lbl, int size) {
+void print_live_block_list(char *path, GArray *array) {
   int i;
-  char str[size];
-  seaf_warning("CDC-EARLY: path for live list: %s  -  size %d  -  lbl addr %p\n", path, size, lbl);
-  for (i = 0; i < size; i++) {
-    if (lbl[i]) {
-      strcat(str, "1");
-    } else {
-      strcat(str, "0");
-    }
+  seaf_warning("CDC-EARLY: live list starting\n");
+  uint64_t elem;
+  for (i = 0; i < array->len; i++) {
+    elem = g_array_index(array, uint64_t, i);
+    seaf_warning("CDC-EARLY: live list: %d\n", elem);
   }
-  seaf_warning("CDC-EARLY: live list: %s\n", str);
+  seaf_warning("CDC-EARLY: live list stoping\n");
 }
+
 
 static gboolean
 process_duet_events (SeafWTMonitorPriv *priv) {
+    seaf_warning("CDC: >> process_duet_events\n");
     gpointer key, value;
     GHashTableIter iter;
     RepoWatchInfo *info;
@@ -643,10 +696,11 @@ process_duet_events (SeafWTMonitorPriv *priv) {
 
     WTStatus *status = NULL;
     int tfd;
+    int ret;
 
     int num_events = FETCH_ITEMS;
     int bufsize = num_events * sizeof(struct duet_item);
-    struct duet_item *duet_events = malloc(bufsize);
+    struct duet_item *duet_events = calloc(1, bufsize);
 
 
     // Check for duet events.
@@ -669,18 +723,24 @@ process_duet_events (SeafWTMonitorPriv *priv) {
         status = info->status;
 
         do {
-            num_events = FETCH_ITEMS;
-            if (!read(tfd, duet_events, bufsize)) {
+            seaf_warning("CDC: Reading %d duet events from %d to %p\n", bufsize, tfd, duet_events);
+            ret = read(tfd, duet_events, bufsize);
+            if (ret < 0) {
                 seaf_warning ("Duet fetch failed.\n");
                 return FALSE;
             }
+            seaf_warning("CDC: Read %d events\n", ret / sizeof(struct duet_item));
 
-            duet_events_to_wtevents(duet_events, num_events, priv, status, info, tfd);
-        } while (num_events != 0);
+            if (ret == 0) break;
+
+            duet_events_to_wtevents(duet_events, ret / sizeof(struct duet_item), priv, status, info, tfd);
+        } while (ret == bufsize);
+        seaf_warning("CDC: Done reading duet events\n");
     }
 
     free(duet_events);
 
+    seaf_warning("CDC: << process_duet_events\n");
     return TRUE;
 }
 

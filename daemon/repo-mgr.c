@@ -1093,7 +1093,9 @@ index_cb (const char *repo_id,
     
     GHashTableIter iter;
     gpointer key, value;
-    uint8_t *live_blocks;
+    GArray *live_blocks = NULL;
+
+    seaf_warning ("Live blocks: %p\n", live_blocks);
 
     /* HACK: We need the WTStatus in order to see the Duet hints. A better
      * design for getting this information from the wt monitor code to the
@@ -1125,12 +1127,14 @@ index_cb (const char *repo_id,
     }
 
     if (g_hash_table_lookup_extended(status->filename_to_live_block_hash,
-                                     path, NULL, (void **) &live_blocks)) {
+                                     full_path, NULL, (void **) &live_blocks)) {
         g_hash_table_remove(status->filename_to_live_block_hash, path);
     }
+    seaf_warning ("Live blocks: %p\n", live_blocks);
 
     pthread_mutex_unlock(&status->duet_hint_mutex);
 
+    seaf_warning ("Indexing file: %s.\n", path);
     if (seaf_fs_manager_index_blocks (seaf->fs_mgr, repo_id, version, path,
                                       full_path, live_blocks, offset, sha1, &size, crypt, write_data, TRUE) < 0) {
         seaf_warning ("Failed to index file %s.\n", path);

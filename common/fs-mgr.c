@@ -830,7 +830,7 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
                               int version,
                               const char *path,
                               const char *full_path,
-                              uint8_t *live_blocks,
+                              GArray *live_blocks,
                               uint64_t offset,
                               unsigned char sha1[],
                               gint64 *size,
@@ -840,6 +840,7 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
 {
     SeafStat sb;
     CDCFileDescriptor cdc;
+    seaf_warning("CDC-EARLY: seaf_fs_manager_index_blocks\n");
 
     SeafRepo *repo = NULL;
     SeafBranch *branch = NULL;
@@ -848,14 +849,17 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
     char *file_id = NULL;
     int num_unchanged = 0;
     char **existing_blocks = NULL;
+    seaf_warning("CDC-EARLY: here\n");
 
     if (seaf_stat (full_path, &sb) < 0) {
         seaf_warning ("Bad file %s: %s.\n", full_path, strerror(errno));
         return -1;
     }
+    seaf_warning("CDC-EARLY: here\n");
 
     g_return_val_if_fail (S_ISREG(sb.st_mode), -1);
 
+    seaf_warning("CDC-EARLY: here\n");
     if (sb.st_size == 0) {
         /* handle empty file. */
         memset (sha1, 0, 20);
@@ -881,10 +885,12 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
             cdc.file_size = sb.st_size;
             if (split_file_to_block (repo_id, version, full_path, sb.st_size,
                                      crypt, &cdc, write_data) < 0) {
+                seaf_warning("CDC-EARLY: something happened\n");
                 return -1;
             }
         }
 #else
+    seaf_warning("CDC-EARLY: here\n");
         cdc.block_sz = calculate_chunk_size (sb.st_size);
         cdc.block_min_sz = cdc.block_sz >> 2;
         cdc.block_max_sz = cdc.block_sz << 2;
@@ -892,7 +898,13 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
         memcpy (cdc.repo_id, repo_id, 36);
         cdc.version = version;
 
+        seaf_warning("CDC-EARLY: here %p\n", live_blocks);
+        if (live_blocks == NULL) {
+          seaf_warning("CDC-EARLY: seaf_fs_manager_index_blocks -> live blocks is null\n");
+        }
+
         if (offset != 0 || live_blocks) {
+            seaf_warning("CDC-EARLY: seaf_fs_manager_index_blocks -> we're in\n");
             gint64 tick;
             tick = g_get_monotonic_time();
 
@@ -959,6 +971,7 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
         }
 
 start_chunking:
+        seaf_warning("CDC-EARLY: seaf_fs_manager_index_blocks -> start chunking\n");
         if (commit) {
             seaf_commit_unref(commit);
         }
