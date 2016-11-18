@@ -902,7 +902,7 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
         if (live_blocks == NULL) {
           seaf_warning("CDC-EARLY: seaf_fs_manager_index_blocks -> live blocks is null\n");
         }
-
+        uint64_t num_chunks = 0;
         if (offset != 0 || live_blocks) {
             seaf_warning("CDC-EARLY: seaf_fs_manager_index_blocks -> we're in\n");
             gint64 tick;
@@ -952,18 +952,19 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
             seaf_warning("[HASHDEBUG] seafile->n_blocks = %d\n", seafile->n_blocks);
             seaf_warning("[HASHDEBUG] offset desired = %ld\n", offset);
 
+            num_chunks = seafile->n_blocks;
             // NOTE: this loop will never allow us to retain all the blocks
             // the old version of the file, e.g. in the case of an append. This
             // is because the final block in a file generally only stops because
             // we've reached the end of the file, not because of a valid chunk
             // boundary. As such, we rechunk the last chunk + the appended data.
-            num_unchanged = 0;
-            while ((num_unchanged + 1 < seafile->n_blocks) &&
-                   (seafile->blk_offsets[num_unchanged + 1] < offset)) {
-                num_unchanged++;
-            }
+            //num_unchanged = 0;
+            //while ((num_unchanged + 1 < seafile->n_blocks) &&
+            //       (seafile->blk_offsets[num_unchanged + 1] < offset)) {
+            //    num_unchanged++;
+            //}
 
-            offset = seafile->blk_offsets[num_unchanged];
+            //offset = seafile->blk_offsets[num_unchanged];
             existing_blocks = seafile->blk_sha1s;
             seaf_warning("[HASHDEBUG] first offset = %ld\n", offset);
 
@@ -983,7 +984,7 @@ start_chunking:
         if (early_stop_filename_chunk_cdc (full_path, &cdc, crypt,
                                      (seafile != NULL) ? seafile->blk_offsets : NULL,
                                                  offset, existing_blocks, live_blocks,
-                                                 num_unchanged, write_data) < 0) {
+                                                 num_unchanged, write_data, num_chunks) < 0) {
             seaf_warning ("Failed to chunk file with CDC.\n");
 
             if (seafile) {

@@ -99,7 +99,8 @@ int early_stop_filename_chunk_cdc(const char *filename,
                                   char **existing_blocks,
                                   GArray *live_blocks,
                                   int num_unchanged,
-                                  gboolean write_data);
+                                  gboolean write_data,
+                                  uint64_t num_chunks);
 
 int filename_chunk_cdc(const char *filename,
                        CDCFileDescriptor *file_descr,

@@ -1128,7 +1128,7 @@ index_cb (const char *repo_id,
 
     if (g_hash_table_lookup_extended(status->filename_to_live_block_hash,
                                      full_path, NULL, (void **) &live_blocks)) {
-        g_hash_table_remove(status->filename_to_live_block_hash, path);
+        g_hash_table_remove(status->filename_to_live_block_hash, full_path);
     }
     seaf_warning ("Live blocks: %p\n", live_blocks);
 

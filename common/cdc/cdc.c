@@ -50,6 +50,7 @@ static int default_write_chunk (CDCDescriptor *chunk_descr)
     rawdata_to_hex (chunk_descr->checksum, chksum_str, CHECKSUM_LENGTH);
     snprintf (filename, NAME_MAX_SZ, "./%s", chksum_str);
     fd_chunk = g_open (filename, O_RDWR | O_CREAT | O_BINARY, 0644);
+    seaf_warning("CDC: Wrote to file with name %s\n", filename);
     if (fd_chunk < 0)
         return -1;    
     
@@ -333,11 +334,11 @@ int incremental_filename_chunk_cdc(const char *filename,
 }
 
 
-int meets_early_stop_criteria(int offset, uint64_t *offsets, int num_blocks) {
-  seaf_warning("CDC-EARLY: >> meets_early_stop_criteria, num_blocks = %d\n", num_blocks);
+int meets_early_stop_criteria(uint64_t offset, uint64_t *offsets, int num_blocks) {
+  seaf_warning("CDC-EARLY: >> meets_early_stop_criteria, num_blocks = %d, offset = %lu\n", num_blocks, offset);
   if (!offsets) {
     seaf_warning("CDC-EARLY: offsets are null\n");
-    return 1;
+    return 0;
   }
   int i;
   for (i = 0; i < num_blocks; i++) {
@@ -360,7 +361,7 @@ int early_stop_file_chunk_cdc(int fd_src,
                    uint64_t *offsets,
                    uint64_t num_blocks)
 {
-    seaf_warning("CDC-EARLY: >> early_stop_file_chunk\n");
+    seaf_warning("CDC-EARLY: >> early_stop_file_chunk from block %d\n", file_descr->block_nr);
     char *buf;
     uint32_t buf_sz;
     SHA_CTX file_ctx;
@@ -380,17 +381,13 @@ int early_stop_file_chunk_cdc(int fd_src,
     uint32_t block_min_sz = file_descr->block_min_sz;
     uint32_t block_mask = file_descr->block_sz - 1;
 
-    seaf_warning("CDC-EARLY: segfault finder. \n");
+    seaf_warning("CDC-EARLY: segfault finder. file size %d\n", file_descr->file_size);
     int fingerprint = 0;
-    int offset = 0;
+    int offset = file_descr->file_size;
     int ret = 0;
     int tail, cur, rsize;
 
     seaf_warning("CDC-EARLY: segfault finder. \n");
-    if (file_descr->block_nr != 0) {
-    seaf_warning("CDC-EARLY: segfault finder. \n");
-        offset = file_descr->blk_offsets[file_descr->block_nr - 1];
-    }
 
     seaf_warning("CDC-EARLY: segfault finder. \n");
     buf_sz = file_descr->block_max_sz;
@@ -503,22 +500,28 @@ int early_stop_file_chunk_cdc(int fd_src,
 }
 
 void write_out_intermediate_chunks(CDCFileDescriptor *file_descr, char **existing_blocks, int start_offset, int end_offset) {
-  seaf_warning("CDC-EARLY: >> write out intermediate chunks\n");
+  seaf_warning("CDC-EARLY: >> write out intermediate chunks from %d to %d\n", start_offset, end_offset);
+  if (existing_blocks == NULL) {
+      seaf_warning("CDC-EARLY: >> write out intermediate chunks - existing blocks is null\n");
+  }
   int i;
   for (i = start_offset; i < end_offset; i++) {
+    seaf_warning("CDC-EARLY: segfault detector %s\n", existing_blocks[i]);
     hex_to_rawdata (existing_blocks[i],
                     file_descr->blk_sha1s + i * CHECKSUM_LENGTH, 20);
+    seaf_warning("CDC-EARLY: segfault detector\n");
     file_descr->blk_offsets[i] = existing_blocks[i];
+    seaf_warning("CDC-EARLY: segfault detector\n");
   }
   seaf_warning("CDC-EARLY: << write out intermediate chunks\n");
 }
 
-void print_live_chunk_list(CDCFileDescriptor *file_descr) {
+void print_live_chunk_list(CDCFileDescriptor *file_descr, uint64_t num_chunks) {
   int i;
-  char str[file_descr->max_block_nr];
+  char str[num_chunks];
   seaf_warning("CDC-EARLY: chunk list: \n");
 
-  for (i = 0; i < file_descr->max_block_nr; i++) {
+  for (i = 0; i < num_chunks; i++) {
      if (file_descr->live_chunk_list[i]) {
        strcat(str, "1");
      } else {
@@ -529,10 +532,12 @@ void print_live_chunk_list(CDCFileDescriptor *file_descr) {
   seaf_warning("CDC-EARLY: chunk list: %s\n", str);
 }
 
-void populate_live_list(CDCFileDescriptor *file_descr, GArray *live_blocks, uint64_t *offsets) {
+void populate_live_list(CDCFileDescriptor *file_descr, GArray *live_blocks, uint64_t *offsets, uint64_t num_chunks) {
+  seaf_warning("CDC-EARLY: >> populate live list\n");
+  seaf_warning("CDC-EARLY: max block nr %d\n", file_descr->max_block_nr);
   int i, j, chunk_index;
   uint64_t elem;
-  if (live_blocks == NULL) {
+  if (live_blocks == NULL || offsets == NULL) {
     seaf_warning("CDC-EARLY: live blocks is null\n");
     for (chunk_index = 0; chunk_index < file_descr->max_block_nr; chunk_index++) {
       file_descr->live_chunk_list[chunk_index] = 1;
@@ -540,15 +545,12 @@ void populate_live_list(CDCFileDescriptor *file_descr, GArray *live_blocks, uint
     return;
   }
 
-  for (i = 0; i < file_descr->max_block_nr; i++) {
-    seaf_warning("Offset at %d\n", offsets[i]);
+  for (i = 0; i < num_chunks; i++) {
+    seaf_warning("Offset at %lu\n", offsets[i]);
   }
-  seaf_warning("max_block_nr = %d\n", file_descr->max_block_nr);
   for (i = 0; i < live_blocks->len; i++) {
     elem = g_array_index(live_blocks, uint64_t, i);
-    seaf_warning("one iter\n");
-    for (chunk_index = file_descr->max_block_nr - 1; chunk_index > -1; chunk_index--) {
-      seaf_warning("checking \n\n", offsets[chunk_index]);
+    for (chunk_index = num_chunks - 1; chunk_index > -1; chunk_index--) {
       if (offsets[chunk_index] <= elem) {
         file_descr->live_chunk_list[chunk_index] = 1;
         break;
@@ -556,12 +558,16 @@ void populate_live_list(CDCFileDescriptor *file_descr, GArray *live_blocks, uint
     }
   }
   print_live_block_list("", live_blocks);
-  print_live_chunk_list(file_descr);
+  print_live_chunk_list(file_descr, num_chunks);
+  seaf_warning("CDC-EARLY: << populate live list\n");
 }
 
-uint64_t get_chunk_nr(CDCFileDescriptor *file_descr, uint64_t old_offset, uint64_t *offsets) {
+uint64_t get_chunk_nr(CDCFileDescriptor *file_descr, uint64_t old_offset, uint64_t *offsets, uint64_t num_chunks) {
+  seaf_warning("CDC-EARLY: << get_chunk_nr, old offset = %d \n", old_offset);
+
   int nr;
-  for (nr = 0; nr < file_descr->max_block_nr; nr++) {
+  for (nr = 0; nr < num_chunks; nr++) {
+    seaf_warning("CDC-EARLY: checking %d against %d \n", old_offset, offsets[nr]);
     if (old_offset == offsets[nr]) {
       return nr;
     }
@@ -585,14 +591,15 @@ int early_stop_filename_chunk_cdc(const char *filename,
                                   char **existing_blocks,
                                   GArray *live_blocks,
                                   int num_unchanged,
-                                  gboolean write_data) {
+                                  gboolean write_data,
+                                  uint64_t num_chunks) {
     seaf_warning("CDC-EARLY: Early-stop chunking %s by %lu\n", filename, chunk_offset);
     seaf_warning("CDC-EARLY: >> live_blocks = %p\n", live_blocks);
     gint64 seek_amount;
     int i;
     char buf[100];
     gint64 tick;
-    uint64_t old_chunk_offset;
+    uint64_t old_chunk_offset = 0;
     int fd_src = seaf_util_open (filename, O_RDONLY | O_BINARY);
     if (fd_src < 0) {
         seaf_warning ("CDC-EARLY: failed to open %s.\n", filename);
@@ -617,23 +624,37 @@ int early_stop_filename_chunk_cdc(const char *filename,
         seaf_warning("CDC-EARLY: file_size is being set to: %d\n", file_descr->file_size);
     }
     
-    populate_live_list(file_descr, live_blocks, offsets);
+    populate_live_list(file_descr, live_blocks, offsets, num_chunks);
 
     int num_blocks = file_descr->max_block_nr;
-
 
     int old_chunk_nr = 0;
     int curr_chunk_nr = 0;
     seaf_warning("CDC-EARLY: File size is %lu bytes\n", expected_size);
     tick = g_get_monotonic_time();
-    seaf_warning("CDC-EARLY: About to chunk\n");
+    seaf_warning("CDC-EARLY: About to chunk %d chunks\n", num_chunks);
 
     // Chunk until the final offset that has been returned is larger than the expected
     // size of the file
     while (chunk_offset < expected_size) { /** TODO **/
         seaf_warning("CDC-EARLY: >> chunk iter\n");
+        seaf_warning("CDC-EARLY: >> checking live list\n");
+        while (file_descr->live_chunk_list[curr_chunk_nr] != 1 && curr_chunk_nr < num_chunks) {
+          curr_chunk_nr++;
+          file_descr->block_nr++;
+        }
+        seaf_warning("CDC-EARLY: << checking live list\n");
+        if (offsets == NULL) {
+          seaf_warning("CDC-EARLY: there are no offsets\n");
+          chunk_offset = old_chunk_offset;
+        } else {
+          chunk_offset = offsets[curr_chunk_nr];
+          seaf_warning("CDC-EARLY: setting chunk offset to %lu for chunk %d\n", chunk_offset, curr_chunk_nr);
+        }
+        file_descr->file_size = chunk_offset; 
         // Write out the chunks between the last live chunk and the next live chunk
         write_out_intermediate_chunks(file_descr, existing_blocks, old_chunk_nr, curr_chunk_nr);
+        seaf_warning("CDC-EARLY: seeking to %lu in %s\n", chunk_offset, filename);
         seek_amount = seaf_util_lseek(fd_src, chunk_offset, SEEK_SET);
 
         if (seek_amount < 0) {
@@ -642,29 +663,24 @@ int early_stop_filename_chunk_cdc(const char *filename,
             seaf_warning("CDC-EARLY: failed to seek %s by %d\n", filename, chunk_offset);
         }
 
-        old_chunk_offset = early_stop_file_chunk_cdc (fd_src, file_descr, crypt, expected_size, write_data, offsets, num_blocks);
+        old_chunk_offset = early_stop_file_chunk_cdc (fd_src, file_descr, crypt, expected_size, write_data, offsets, num_chunks);
+        seaf_warning("CDC-EARLY: segf detect\n");
         if (old_chunk_offset == expected_size) {
           return 0;
         }
+        seaf_warning("CDC-EARLY: segf detect\n");
         if (old_chunk_offset == -1) {
           seaf_warning("CDC-EARLY: early_stop_file_chunk_cdc failed (-1)\n");
           return -1;
         }
-        old_chunk_nr = curr_chunk_nr = get_chunk_nr(file_descr, old_chunk_offset, offsets);
-
-        int i;
-        seaf_warning("CDC-EARLY: >> checking live list\n");
-        while (file_descr->live_chunk_list[curr_chunk_nr] != 1) {
-          curr_chunk_nr++;
-          file_descr->block_nr++;
+        seaf_warning("CDC-EARLY: segf detect\n");
+        old_chunk_nr = curr_chunk_nr = get_chunk_nr(file_descr, old_chunk_offset, offsets, num_chunks);
+        seaf_warning("CDC-EARLY: segf detect\n");
+        if (old_chunk_nr == -1) {
+            seaf_warning("CDC-EARLY: curr chunk nr is -1\n");
+            old_chunk_nr = 0;
+            curr_chunk_nr = 0;
         }
-        seaf_warning("CDC-EARLY: << checking live list\n");
-        if (offsets == NULL) {
-          chunk_offset = old_chunk_offset;
-        } else {
-          chunk_offset = offsets[curr_chunk_nr];
-        }
-        file_descr->file_size = old_chunk_offset; 
 
         seaf_warning("CDC-EARLY: << chunk iter\n");
     }
