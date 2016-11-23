@@ -669,10 +669,10 @@ int early_stop_filename_chunk_cdc(const char *filename,
         }
 
         old_chunk_offset = early_stop_file_chunk_cdc (fd_src, file_descr, crypt, expected_size, write_data, offsets, num_chunks);
-        seaf_warning("CDC-EARLY: segf detect\n");
+        seaf_warning("CDC-EARLY: segf detect %d \n", old_chunk_offset);
         if (old_chunk_offset == expected_size) {
           seaf_warning("CDC-EARLY: offset == expected size\n");
-          return 0;
+          goto cleanup;
         }
         seaf_warning("CDC-EARLY: segf detect\n");
         if (old_chunk_offset == -1) {
@@ -690,6 +690,7 @@ int early_stop_filename_chunk_cdc(const char *filename,
 
         seaf_warning("CDC-EARLY: << chunk iter\n");
     }
+cleanup:
     time_spent_chunking += (g_get_monotonic_time() - tick);
     seaf_warning("Time spent chunking %d", time_spent_chunking);
 
