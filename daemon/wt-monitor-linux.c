@@ -566,10 +566,11 @@ process_duet_events (SeafWTMonitorPriv *priv) {
 
     WTStatus *status = NULL;
     int tfd;
+    int ret;
 
     int num_events = FETCH_ITEMS;
     int bufsize = num_events * sizeof(struct duet_item);
-    struct duet_item *duet_events = malloc(bufsize);
+    struct duet_item *duet_events = calloc(1, bufsize);
 
 
     // Check for duet events.
@@ -592,16 +593,19 @@ process_duet_events (SeafWTMonitorPriv *priv) {
         status = info->status;
 
         do {
-            num_events = FETCH_ITEMS;
-            if (!read(tfd, duet_events, bufsize)) {
+            ret = read(tfd, duet_events, bufsize);
+            if (ret < 0 && errno != EAGAIN) {
                 seaf_warning ("Duet fetch failed.\n");
                 return FALSE;
             }
 
-            duet_events_to_wtevents(duet_events, num_events, priv, status, info, tfd);
-        } while (num_events != 0);
-    }
+            if (ret == 0 || errno == EAGAIN) break;
+            seaf_warning("CDC: Read %d events\n", ret / sizeof(struct duet_item));
 
+            duet_events_to_wtevents(duet_events, ret / sizeof(struct duet_item), priv, status, info, tfd);
+        } while (ret == bufsize);
+    }
+    errno = 0;
     free(duet_events);
 
     return TRUE;
@@ -781,7 +785,7 @@ add_watch (SeafWTMonitorPriv *priv, const char *repo_id, const char *worktree)
     /* A special event indicates repo-mgr to scan the whole worktree. */
     add_event_to_queue (info->status, WT_EVENT_SCAN_DIR, "", NULL);
 
-    regmask = DUET_PAGE_DIRTY;
+    regmask = DUET_PAGE_DIRTY | DUET_FD_NONBLOCK;
     tfd = duet_register(SEAFILE_DUET_TASK_NAME, regmask, worktree);
     if (tfd <= 0) {
         seaf_warning ("[wt_duet] failed to register with duet.\n");
