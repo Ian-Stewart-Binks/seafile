@@ -1115,10 +1115,10 @@ index_cb (const char *repo_id,
     */
 
     if (g_hash_table_lookup_extended(status->filename_to_offset_hash,
-                                     path, NULL, (void **) &offset)) {
+                                     full_path, NULL, (void **) &offset)) {
 
-        g_hash_table_remove(status->filename_to_offset_hash, path);
-        //seaf_warning("[HASHDEBUG] Got offset %ld\n", offset);
+        g_hash_table_remove(status->filename_to_offset_hash, full_path);
+        seaf_warning("[HASHDEBUG] Got offset %ld\n", offset);
     } else {
         offset = 0;
     }
