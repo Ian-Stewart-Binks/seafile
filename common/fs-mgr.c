@@ -17,6 +17,8 @@
 
 #include "seafile-session.h"
 #include "seafile-error.h"
+#include <sys/time.h>
+#include <sys/resource.h>
 #include "fs-mgr.h"
 #include "block-mgr.h"
 #include "utils.h"
@@ -824,6 +826,11 @@ out:
 
 #endif  /* SEAFILE_SERVER */
 
+uint64_t tv_to_ms(struct timeval tv) {
+    seaf_warning("tv_to_ms: tv_sec %d\n", tv.tv_sec);
+    return (tv.tv_sec) * 1000 + (tv.tv_usec) / 1000;
+}
+
 int
 seaf_fs_manager_index_blocks (SeafFSManager *mgr,
                               const char *repo_id,
@@ -914,7 +921,7 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
                 goto start_chunking;
             }
             
-            // Get the file id for this path.
+            // Get the file id for rthis path.
             file_id = seaf_fs_manager_get_seafile_id_by_path (mgr, repo_id,
                                                     repo->version, commit->root_id,
                                                     path, NULL);
@@ -978,6 +985,13 @@ start_chunking:
 
             return -1;
         }
+        struct rusage resource_usage;
+        getrusage(RUSAGE_SELF, &resource_usage);
+
+        cpu_user_timestamp = tv_to_ms(resource_usage.ru_utime);
+        cpu_sys_timestamp = tv_to_ms(resource_usage.ru_stime);
+        output_num = resource_usage.ru_oublock;
+        input_num = resource_usage.ru_inblock;
 
         if (seafile) {
             seafile_unref (seafile);

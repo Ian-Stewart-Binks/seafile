@@ -5,8 +5,12 @@
 #include "seafile-object.h"
 
 extern gint64 global_timestamp;
+extern gint64 cpu_user_timestamp;
+extern gint64 cpu_sys_timestamp;
 extern gint64 metadata_load_time;
 extern gint64 setup_time;
+extern gint64 output_num;
+extern gint64 input_num;
 
 /**
  * seafile_get_session_info:
