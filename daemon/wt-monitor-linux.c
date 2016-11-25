@@ -520,7 +520,6 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
     uint64_t duet_offset;
     unsigned long long uuid;
     struct duet_uuid duet_uuid;
-    print_duet_event(duet_events, num_events);
     uuid_to_path_hash = g_hash_table_new_full(g_direct_hash,
                                               g_direct_equal,
                                               NULL, g_free);

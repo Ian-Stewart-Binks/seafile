@@ -4,6 +4,8 @@
 #include <glib/gstdio.h>
 #include <glib.h>
 #include <ctype.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 
 #include <sys/stat.h>
 #include <dirent.h>
@@ -35,6 +37,10 @@
 gint64 global_timestamp;
 gint64 metadata_load_time;
 gint64 setup_time;
+gint64 cpu_user_timestamp;
+gint64 cpu_sys_timestamp;
+gint64 output_num;
+gint64 input_num;
 
 /* -------- Utilities -------- */
 static GObject*
@@ -423,16 +429,21 @@ char *
 seafile_get_debug_timers (GError **error)
 {
   gchar *timer_val;
+  seaf_warning("got %lu and %lu\n", cpu_user_timestamp, cpu_sys_timestamp);
   timer_val = g_strdup_printf("bytes_read=%ld\n"
                        "bytes_written=%ld\n"
+                       "cpu_time_user=%lu\n"
+                       "cpu_time_sys=%lu\n"
                        "chunk_bytes=%ld\n"
                        "chunk_time=%ld\n"
                        "global_time=%ld\n"
                        "setup_time=%ld\n"
-                       "meta_time=%ld\n",
-            num_bytes_read, num_bytes_written, num_bytes_read_for_chunking,
+                       "meta_time=%ld\n"
+                       "output_num=%ld\n"
+                       "input_num=%ld\n",
+            num_bytes_read, num_bytes_written, cpu_user_timestamp, cpu_sys_timestamp, num_bytes_read_for_chunking,
             time_spent_chunking, g_get_monotonic_time() - global_timestamp,
-            setup_time, metadata_load_time);
+            setup_time, metadata_load_time, output_num, input_num);
 
   num_bytes_read = 0;
   num_bytes_written = 0;
@@ -440,6 +451,10 @@ seafile_get_debug_timers (GError **error)
   time_spent_chunking = 0;
   metadata_load_time = 0;
   global_timestamp = g_get_monotonic_time();
+  cpu_user_timestamp = 0;
+  cpu_sys_timestamp = 0;
+  output_num = 0;
+  input_num = 0;
 
   return timer_val;
 }
