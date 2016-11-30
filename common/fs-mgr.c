@@ -1,5 +1,5 @@
 /* -*- Mode: C; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
-
+#define _GNU_SOURCE
 #include "common.h"
 
 #include <ccnet.h>
@@ -1001,10 +1001,10 @@ start_chunking:
             return -1;
         }
         struct rusage resource_usage;
-        getrusage(RUSAGE_SELF, &resource_usage);
+        getrusage(RUSAGE_THREAD, &resource_usage);
 
-        cpu_user_timestamp = tv_to_ms(resource_usage.ru_utime);
-        cpu_sys_timestamp = tv_to_ms(resource_usage.ru_stime);
+        cpu_user_timestamp = tv_to_ms(resource_usage.ru_utime); // - cpu_user_timestamp;
+        cpu_sys_timestamp = tv_to_ms(resource_usage.ru_stime); // - cpu_sys_timestamp;
         output_num = resource_usage.ru_oublock;
         input_num = resource_usage.ru_inblock;
 

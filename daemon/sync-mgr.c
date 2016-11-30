@@ -675,6 +675,10 @@ transition_sync_state (SyncTask *task, int new_state)
         }
 
         task->state = new_state;
+        seaf_message ("Repo '%s' sync state now '%s'.\n",
+                      task->repo->name,
+                      sync_state_str[task->state]);
+
         if (new_state == SYNC_STATE_DONE || 
             new_state == SYNC_STATE_CANCELED ||
             new_state == SYNC_STATE_ERROR) {

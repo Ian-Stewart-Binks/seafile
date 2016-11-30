@@ -1,4 +1,5 @@
 /* -*- Mode: C; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+#define _GNU_SOURCE
 
 #include "common.h"
 
@@ -492,6 +493,10 @@ cleanup_job_done (void *vdata)
     metadata_load_time = 0;
     cpu_user_timestamp = 0;
     cpu_sys_timestamp = 0;
+    struct rusage resource_usage;
+    getrusage(RUSAGE_THREAD, &resource_usage);
+    cpu_user_timestamp = tv_to_ms(resource_usage.ru_utime);
+    cpu_sys_timestamp = tv_to_ms(resource_usage.ru_stime);
 
     /* Must be after wt monitor, since we may add watch to repo worktree. */
     if (seaf_repo_manager_start (session->repo_mgr) < 0) {

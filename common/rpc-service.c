@@ -451,8 +451,8 @@ seafile_get_debug_timers (GError **error)
   time_spent_chunking = 0;
   metadata_load_time = 0;
   global_timestamp = g_get_monotonic_time();
-  cpu_user_timestamp = 0;
-  cpu_sys_timestamp = 0;
+  cpu_user_timestamp = 0; //tv_to_ms(resource_usage.ru_utime);
+  cpu_sys_timestamp = 0; //tv_to_ms(resource_usage.ru_stime);
   output_num = 0;
   input_num = 0;
 
