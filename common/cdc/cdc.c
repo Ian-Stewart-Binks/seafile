@@ -30,7 +30,7 @@
 gint64 num_bytes_read_for_chunking;
 gint64 time_spent_chunking;
 
-static void print_live_block_list(char *path, GArray *array) {
+static void print_live_block_list(char *path, GTree *array) {
   int i;
   uint64_t elem;
   for (i = 0; i < array->len; i++) {
@@ -533,7 +533,13 @@ void print_live_chunk_list(CDCFileDescriptor *file_descr, uint64_t num_chunks) {
   seaf_warning("CDC-EARLY: chunk list: %s\n", str);
 }
 
-void populate_live_list(CDCFileDescriptor *file_descr, GArray *live_blocks, uint64_t *offsets, uint64_t num_chunks) {
+
+gboolean mark_chunk_active(gpointer key, gpointer value, gpointer data) {
+	int chunk_index;
+	for (chunk_index = num_chunks - 1;
+}
+
+void populate_live_list(CDCFileDescriptor *file_descr, GTree *live_blocks, uint64_t *offsets, uint64_t num_chunks) {
   seaf_warning("CDC-EARLY: >> populate live list\n");
   seaf_warning("CDC-EARLY: max block nr %d\n", file_descr->max_block_nr);
   int i, j, chunk_index;
@@ -559,6 +565,8 @@ void populate_live_list(CDCFileDescriptor *file_descr, GArray *live_blocks, uint
       }
     }
   }
+
+  g_tree_foreach(live_blocks, mark_chunk_active, (void**) &(file_descr));
 
   file_descr->live_chunk_list[num_chunks - 1] = 1;
   
@@ -594,7 +602,7 @@ int early_stop_filename_chunk_cdc(const char *filename,
                                   uint64_t *offsets,
                                   uint64_t chunk_offset,
                                   char **existing_blocks,
-                                  GArray *live_blocks,
+                                  GTree *live_blocks,
                                   int num_unchanged,
                                   gboolean write_data,
                                   uint64_t num_chunks) {

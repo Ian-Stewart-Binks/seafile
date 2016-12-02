@@ -488,16 +488,10 @@ void print_duet_event(struct duet_item *duet_events, int num_events) {
     seaf_warning("CDC-PRINT_EVENT: stop %d\n", num_events);
 }
 
-void merge_garrays(GArray *array_1, GArray *array_2) {
-  seaf_warning("CDC-EARLY: array_1 %p\n", array_1);
-  seaf_warning("CDC-EARLY: array_2 %p\n", array_2);
 
-  int i;
-  uint64_t elem;
-  for (i = 0; i < array_2->len; i++) {
-    elem = g_array_index(array_2, uint64_t, i);
-    g_array_append_val(array_1, elem);
-  }
+gboolean merge_with(gpointer key, gpointer value, gpointer tree_1) {
+	g_tree_insert((GTree *)tree_1, key, value);
+	return 0;
 }
 
 static void duet_events_to_wtevents(struct duet_item *duet_events,
@@ -508,7 +502,7 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
                                     int tfd) {
     int i;
 	char *temp_path = "/";
-    seaf_warning("CDC-EARLY: >> duet_events_to_wt_events\n");
+    //seaf_warning("CDC-EARLY: >> duet_events_to_wt_events\n");
     GHashTable *uuid_to_path_hash = NULL;
     GHashTable *uuid_to_offset_hash = NULL;
     GHashTable *uuid_to_largest_offset_hash = NULL;
@@ -520,6 +514,7 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
     uint64_t duet_offset;
     unsigned long long uuid;
     struct duet_uuid duet_uuid;
+	GTree *live_block_list;
     uuid_to_path_hash = g_hash_table_new_full(g_direct_hash,
                                               g_direct_equal,
                                               NULL, g_free);
@@ -548,7 +543,7 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
             if (duet_events[i].state & DUET_PAGE_DIRTY) {
                 temp_path = duet_get_path(duet_uuid);
                 if (temp_path == NULL) {
-                    seaf_warning ("Duet failed to get path of file.\n");
+                    //seaf_warning ("Duet failed to get path of file.\n");
                     continue;
                 }
             }
@@ -561,12 +556,12 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
                                          (gconstpointer) uuid,
                                          NULL, (void **) &offset)) {
             if (offset > duet_offset) {
-                seaf_warning("(low) inserting %lu for path %s\n", duet_offset, path);
+                //seaf_warning("(low) inserting %lu for path %s\n", duet_offset, path);
                 g_hash_table_replace(uuid_to_offset_hash, (gpointer) uuid,
                                      (gpointer) duet_offset);
             }
         } else {
-                seaf_warning("(low) inserting %lu for path %s\n", duet_offset, path);
+                //seaf_warning("(low) inserting %lu for path %s\n", duet_offset, path);
             g_hash_table_insert(uuid_to_offset_hash, (gpointer) uuid,
                                 (gpointer) duet_offset);
         }
@@ -576,13 +571,13 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
                                          (gconstpointer) uuid,
                                          NULL, (void **) &offset)) {
             if (offset < duet_offset) {
-                seaf_warning("inserting %lu for path %s\n", duet_offset, path);
+                //seaf_warning("inserting %lu for path %s\n", duet_offset, path);
                 g_hash_table_replace(uuid_to_largest_offset_hash, (gpointer) uuid,
                                      (gpointer) duet_offset);
             }
         } else {
             if (path == NULL) {
-              seaf_warning("empty path?\n");
+              //seaf_warning("empty path?\n");
             }
             g_hash_table_insert(uuid_to_largest_offset_hash, (gpointer) uuid,
                                 (gpointer) duet_offset);
@@ -594,14 +589,14 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
     }
 
     g_hash_table_iter_init(&iter, uuid_to_largest_offset_hash);
-    GArray *live_block_list;
+    GTree *live_block_tree;
     uint64_t largest_duet_offset;
     while(g_hash_table_iter_next (&iter, &key, &value)) {
-        seaf_warning("Creating live block list\n");
+        //seaf_warning("Creating live block list\n");
         uuid = (uint64_t) key;
-        live_block_list = g_array_new(1, 1, sizeof(uint64_t));
+        live_block_list = g_tree_new(g_ascii_strcasecmp);
         if (live_block_list == NULL) {
-          seaf_warning("live_block_list is null\n");
+          //seaf_warning("live_block_list is null\n");
         }
         g_hash_table_insert(uuid_to_live_block_hash, (gpointer) uuid, (gpointer) live_block_list);
         path = (gchar *) g_hash_table_lookup(uuid_to_path_hash,
@@ -609,28 +604,28 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
     }
 
     for (i = 0; i < num_events; i++) { 
-        seaf_warning("populating live block list\n");
+        //seaf_warning("populating live block list\n");
         duet_uuid = duet_events[i].uuid;
         uuid = UUID_IDX(duet_uuid);
         duet_offset = duet_events[i].idx << 12;
         path = (gchar *) g_hash_table_lookup(uuid_to_path_hash,
                                              (gconstpointer) uuid);
-        g_hash_table_lookup_extended(uuid_to_live_block_hash, (gconstpointer) uuid, NULL, (void **) &live_block_list); 
-        g_array_append_val(live_block_list, duet_offset);
+        g_hash_table_lookup_extended(uuid_to_live_block_hash, (gconstpointer) uuid, NULL, (void **) &live_block_tree); 
+        g_tree_insert(live_block_tree, duet_offset, duet_offset);
     }
-    seaf_warning("done populating\n");
+    //seaf_warning("done populating\n");
 
     // Now generate internal events based off of the duet events we found.
     g_hash_table_iter_init(&iter, uuid_to_path_hash);
     int size;
-    GArray *old_list;
+    GTree *old_list;
     pthread_mutex_lock(&status->duet_hint_mutex);
     while (g_hash_table_iter_next (&iter, &key, &value)) {
         uuid = (uint64_t) key;
         path = (gchar *) value;
         size = g_hash_table_lookup(uuid_to_largest_offset_hash, uuid);
         duet_offset = (uint64_t) g_hash_table_lookup(uuid_to_offset_hash, uuid);
-        live_block_list = (GArray *) g_hash_table_lookup(uuid_to_live_block_hash, uuid);
+        live_block_tree = (GTree *) g_hash_table_lookup(uuid_to_live_block_hash, uuid);
         // Set the lowest offset we've seen for this UUID.
         if (g_hash_table_lookup_extended(status->filename_to_offset_hash,
                                          path, NULL, (void **) &offset)) {
@@ -647,18 +642,17 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
 
         if (g_hash_table_lookup_extended(status->filename_to_live_block_hash,
                                          path, NULL, (void **) &old_list)) {
-            merge_garrays(old_list, live_block_list);
+			g_tree_foreach(live_block_list, merge_with, &old_list);
             g_hash_table_replace(status->filename_to_live_block_hash,
                                     (gpointer) g_strdup(path),
                                     (gpointer) old_list);
-            seaf_warning("old value is %p\n", old_list);
-            print_live_block_list(path, old_list);
+            //seaf_warning("old value is %p\n", old_list);
 
         } else {
            g_hash_table_insert(status->filename_to_live_block_hash,
                                    (gpointer) g_strdup(path),
                                    (gpointer) live_block_list);
-           seaf_warning("CDC-EARLY: inserting %p into %s\n", (gpointer) live_block_list, path);
+           //seaf_warning("CDC-EARLY: inserting %p into %s\n", (gpointer) live_block_list, path);
            print_live_block_list(path, live_block_list);
         }
 
@@ -669,7 +663,7 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
     g_hash_table_destroy(uuid_to_path_hash);
     g_hash_table_destroy(uuid_to_offset_hash);
     g_hash_table_destroy(uuid_to_largest_offset_hash);
-    seaf_warning("CDC-EARLY: << duet_events_to_wt_events\n");
+    //seaf_warning("CDC-EARLY: << duet_events_to_wt_events\n");
 }
 
 void print_live_block_list(char *path, GArray *array) {
@@ -677,8 +671,6 @@ void print_live_block_list(char *path, GArray *array) {
   seaf_warning("CDC-EARLY: live list starting\n");
   uint64_t elem;
   for (i = 0; i < array->len; i++) {
-    elem = g_array_index(array, uint64_t, i);
-    seaf_warning("CDC-EARLY: live list: %d\n", elem);
   }
   seaf_warning("CDC-EARLY: live list stoping\n");
 }
@@ -728,7 +720,7 @@ process_duet_events (SeafWTMonitorPriv *priv) {
             }
 
             if (ret == 0 || errno == EAGAIN) break;
-            seaf_warning("CDC: Read %d events\n", ret / sizeof(struct duet_item));
+            //seaf_warning("CDC: Read %d events\n", ret / sizeof(struct duet_item));
 
             duet_events_to_wtevents(duet_events, ret / sizeof(struct duet_item), priv, status, info, tfd);
         } while (ret == bufsize);
