@@ -972,7 +972,10 @@ start_chunking:
         if (file_id) {
             g_free(file_id);
         }
-
+		struct rusage resource_usage;
+		getrusage(RUSAGE_THREAD, &resource_usage);
+		gint64 old_cpu_user_timestamp = tv_to_ms(resource_usage.ru_utime);
+		gint64 old_cpu_sys_timestamp = tv_to_ms(resource_usage.ru_stime);
         if (incremental_filename_chunk_cdc (full_path, &cdc, crypt,
                                 (seafile != NULL) ? seafile->blk_offsets : NULL,
                                             offset, existing_blocks,
@@ -985,11 +988,10 @@ start_chunking:
 
             return -1;
         }
-        struct rusage resource_usage;
         getrusage(RUSAGE_SELF, &resource_usage);
 
-        cpu_user_timestamp = tv_to_ms(resource_usage.ru_utime);
-        cpu_sys_timestamp = tv_to_ms(resource_usage.ru_stime);
+        cpu_user_timestamp += tv_to_ms(resource_usage.ru_utime) - old_cpu_user_timestamp;
+        cpu_sys_timestamp += tv_to_ms(resource_usage.ru_stime) - old_cpu_sys_timestamp;
         output_num = resource_usage.ru_oublock;
         input_num = resource_usage.ru_inblock;
 
