@@ -93,6 +93,10 @@ else:
 seafile_datadir = None
 seafile_worktree = None
 
+def restart_server():
+    '''Restart and garbage collect server.'''
+    debug_print("Restarting Server.")
+    subprocess.check_output(["./SF-server-remote-restart.exp"])
 
 def _check_seafile():
     ''' Check ccnet and seafile have been installed '''
@@ -712,6 +716,22 @@ def seaf_create(args):
     repo_id = create_repo("%s/api2/repos/" % (url), token, args)
     print repo_id
 
+def seaf_timers(args):
+    '''Print out the values of debug timers.'''
+    conf_dir = DEFAULT_CONF_DIR
+    if args.confdir:
+        conf_dir = args.confdir
+    conf_dir = os.path.abspath(conf_dir)
+
+    if not _config_valid(conf_dir):
+        print "Invalid config directory"
+        sys.exit(1)
+
+    pool = ccnet.ClientPool(conf_dir)
+    seafile_rpc = seafile.RpcClient(pool, req_pool=False)
+
+    timers = seafile_rpc.get_debug_timers()
+    print timers
 
 def main():
     ''' Main entry '''
@@ -819,7 +839,10 @@ def main():
     parser_config.add_argument('-c', '--confdir', help='the config directory', type=str, required=confdir_required)
     parser_config.add_argument('-k', '--key', help='configuration key', type=str)
     parser_config.add_argument('-v', '--value', help='configuration value (if provided, key is set to this value)', type=str, required=False)
-
+    # timers
+    parser_timers = subparsers.add_parser('timers', help='Get debug timer values')
+    parser_timers.set_defaults(func=seaf_timers)
+    parser_timers.add_argument('-c', '--confdir', help='the config directory', type=str, required=confdir_required)
     if len(sys.argv) == 1:
         print parser.format_help()
         return

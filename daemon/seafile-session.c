@@ -27,6 +27,10 @@
 #include "seaf-utils.h"
 #include "log.h"
 
+#include <sys/time.h>
+#include <sys/resource.h>
+#include "seafile-rpc.h"
+
 #define MAX_THREADS 50
 
 enum {
@@ -460,7 +464,16 @@ cleanup_job_done (void *vdata)
         g_error ("Failed to start transfer manager.\n");
         return;
     }
-
+    // We consider this the start of the program.
+    global_timestamp = g_get_monotonic_time();
+    setup_time = g_get_monotonic_time() - setup_time;
+    num_bytes_read = 0;
+    num_bytes_written = 0;
+    num_bytes_read_for_chunking = 0;
+    time_spent_chunking = 0;
+    metadata_load_time = 0;
+    cpu_user_timestamp = 0;
+    cpu_sys_timestamp = 0;
     if (http_tx_manager_start (session->http_tx_mgr) < 0) {
         g_error ("Failed to start http transfer manager.\n");
         return;

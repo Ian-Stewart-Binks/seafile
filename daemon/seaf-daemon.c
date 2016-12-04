@@ -229,6 +229,10 @@ start_rpc_service (CcnetClient *client)
                                      "seafile_get_clone_tasks",
                                      searpc_signature_objlist__void());
     searpc_server_register_function ("seafile-rpcserver",
+	                                 seafile_get_debug_timers,
+                                     "seafile_get_debug_timers",
+                                     searpc_signature_string__void());
+    searpc_server_register_function ("seafile-rpcserver",
                                      seafile_sync,
                                      "seafile_sync",
                                      searpc_signature_int__string_string());
@@ -419,7 +423,7 @@ main (int argc, char **argv)
     CcnetClient *client;
     char *ccnet_debug_level_str = "info";
     char *seafile_debug_level_str = "debug";
-
+    setup_time = g_get_monotonic_time();
 #ifdef WIN32
     LoadLibraryA ("exchndl.dll");
 

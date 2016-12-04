@@ -1,5 +1,5 @@
 /* -*- Mode: C; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
-
+#define _GNU_SOURCE
 #include "common.h"
 
 #include <ccnet.h>
@@ -15,6 +15,9 @@
 #include <openssl/sha.h>
 #include <searpc-utils.h>
 
+#include <sys/time.h>
+#include <sys/resource.h>
+#include "seafile-rpc.h"
 #include "seafile-session.h"
 #include "seafile-error.h"
 #include "fs-mgr.h"
@@ -64,6 +67,12 @@ write_seafile (SeafFSManager *fs_mgr,
                CDCFileDescriptor *cdc,
                unsigned char *obj_sha1);
 #endif  /* SEAFILE_SERVER */
+
+uint64_t tv_to_ms(struct timeval tv) {
+    seaf_warning("tv_to_ms: tv_sec %d\n", tv.tv_sec);
+    return (tv.tv_sec) * 1000 + (tv.tv_usec) / 1000;
+}
+	
 
 SeafFSManager *
 seaf_fs_manager_new (SeafileSession *seaf,
@@ -868,10 +877,20 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
         cdc.write_block = seafile_write_chunk;
         memcpy (cdc.repo_id, repo_id, 36);
         cdc.version = version;
+		struct rusage resource_usage;
+		getrusage(RUSAGE_THREAD, &resource_usage);
+		gint64 old_cpu_user_timestamp = tv_to_ms(resource_usage.ru_utime);
+		gint64 old_cpu_sys_timestamp = tv_to_ms(resource_usage.ru_stime);
         if (filename_chunk_cdc (file_path, &cdc, crypt, write_data) < 0) {
             seaf_warning ("Failed to chunk file with CDC.\n");
             return -1;
         }
+		getrusage(RUSAGE_THREAD, &resource_usage);
+		
+		cpu_user_timestamp += tv_to_ms(resource_usage.ru_utime) - old_cpu_user_timestamp;
+		cpu_sys_timestamp += tv_to_ms(resource_usage.ru_stime) - old_cpu_sys_timestamp;
+		output_num = resource_usage.ru_oublock;
+		input_num = resource_usage.ru_inblock;
 #endif
 
         if (write_data && write_seafile (mgr, repo_id, version, &cdc, sha1) < 0) {

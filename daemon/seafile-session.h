@@ -88,6 +88,8 @@ struct _SeafileSession {
     int                  http_proxy_port;
     char                *http_proxy_username;
     char                *http_proxy_password;
+	/* Add debug timers here. */
+	gint64 chunk_time;
 };
 
 struct _SeafileSessionClass
