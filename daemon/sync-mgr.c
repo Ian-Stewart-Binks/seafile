@@ -113,6 +113,8 @@ static void on_repo_http_uploaded (SeafileSession *seaf,
                                    HttpTxTask *tx_task,
                                    SeafSyncManager *manager);
 
+gint64 global_timestamp;
+
 static inline void
 transition_sync_state (SyncTask *task, int new_state);
 
@@ -675,6 +677,11 @@ transition_sync_state (SyncTask *task, int new_state)
         }
 
         task->state = new_state;
+
+		if (new_state == 0) {
+			g_get_monotonic_time() - global_timestamp;
+		}
+
         if (new_state == SYNC_STATE_DONE || 
             new_state == SYNC_STATE_CANCELED ||
             new_state == SYNC_STATE_ERROR) {

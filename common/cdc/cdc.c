@@ -113,8 +113,6 @@ int file_chunk_cdc(int fd_src,
     SHA_CTX file_ctx;
     CDCDescriptor chunk_descr;
     SHA1_Init (&file_ctx);
-	gint64 tick;
-	tick = g_get_monotonic_time();
 
     SeafStat sb;
     if (seaf_fstat (fd_src, &sb) < 0) {
@@ -216,8 +214,6 @@ int file_chunk_cdc(int fd_src,
 
     free (buf);
 
-	time_spent_chunking += (g_get_monotonic_time() - tick);
-	seaf_warning("Time spent chunking %d", time_spent_chunking);
     return 0;
 }
 
@@ -232,8 +228,12 @@ int filename_chunk_cdc(const char *filename,
         return -1;
     }
 
+	gint64 tick;
+	tick = g_get_monotonic_time();
+
     int ret = file_chunk_cdc (fd_src, file_descr, crypt, write_data);
-	fsync(fd_src);
+	time_spent_chunking += (g_get_monotonic_time() - tick);
+	seaf_warning("Time spent chunking %d", time_spent_chunking);
     close (fd_src);
     return ret;
 }

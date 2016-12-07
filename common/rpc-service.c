@@ -442,7 +442,7 @@ seafile_get_debug_timers (GError **error)
 		"output_num=%ld\n"
 		"input_num=%ld\n",
 		num_bytes_read, num_bytes_written, cpu_user_timestamp, cpu_sys_timestamp, num_bytes_read_for_chunking,
-		time_spent_chunking, g_get_monotonic_time() - global_timestamp,
+		time_spent_chunking, global_timestamp,
 		setup_time, metadata_load_time, output_num, input_num);
 	num_bytes_read = 0;
 	num_bytes_written = 0;
