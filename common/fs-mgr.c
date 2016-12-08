@@ -69,7 +69,6 @@ write_seafile (SeafFSManager *fs_mgr,
 #endif  /* SEAFILE_SERVER */
 
 uint64_t tv_to_ms(struct timeval tv) {
-    seaf_warning("tv_to_ms: tv_sec %d\n", tv.tv_sec);
     return (tv.tv_sec) * 1000 + (tv.tv_usec) / 1000;
 }
 	

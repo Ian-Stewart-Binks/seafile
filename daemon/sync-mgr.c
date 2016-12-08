@@ -676,11 +676,12 @@ transition_sync_state (SyncTask *task, int new_state)
                 notify_sync (task->repo);
         }
 
+		if (task->state != SYNC_STATE_DONE && new_state == SYNC_STATE_DONE) {
+			global_timestamp = g_get_monotonic_time() - global_timestamp;
+		}
+
         task->state = new_state;
 
-		if (new_state == 0) {
-			g_get_monotonic_time() - global_timestamp;
-		}
 
         if (new_state == SYNC_STATE_DONE || 
             new_state == SYNC_STATE_CANCELED ||
