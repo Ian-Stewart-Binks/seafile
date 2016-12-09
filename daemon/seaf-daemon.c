@@ -233,6 +233,10 @@ start_rpc_service (CcnetClient *client)
                                      "seafile_get_debug_timers",
                                      searpc_signature_string__void());
     searpc_server_register_function ("seafile-rpcserver",
+	                                 seafile_get_finished,
+                                     "seafile_get_finished",
+                                     searpc_signature_string__void());
+    searpc_server_register_function ("seafile-rpcserver",
                                      seafile_sync,
                                      "seafile_sync",
                                      searpc_signature_int__string_string());

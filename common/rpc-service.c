@@ -41,6 +41,8 @@ gint64 cpu_user_timestamp;
 gint64 cpu_sys_timestamp;
 gint64 output_num;
 gint64 input_num;
+gint64 finished;
+gint64 num_files_chunked;
 
 /* -------- Utilities -------- */
 static GObject*
@@ -440,11 +442,13 @@ seafile_get_debug_timers (GError **error)
 		"setup_time=%ld\n"
 		"meta_time=%ld\n"
 		"output_num=%ld\n"
-		"input_num=%ld\n",
+		"input_num=%ld\n"
+		"num_files_chunked=%ld",
 		num_bytes_read, num_bytes_written, cpu_user_timestamp, cpu_sys_timestamp, num_bytes_read_for_chunking,
 		time_spent_chunking, global_timestamp,
-		setup_time, metadata_load_time, output_num, input_num);
+		setup_time, metadata_load_time, output_num, input_num, num_files_chunked);
 	num_bytes_read = 0;
+	num_files_chunked = 0;
 	num_bytes_written = 0;
 	num_bytes_read_for_chunking = 0;
 	time_spent_chunking = 0;
@@ -455,6 +459,17 @@ seafile_get_debug_timers (GError **error)
 	output_num = 0;
 	input_num = 0;
 	return timer_val;
+}
+
+
+char*
+seafile_get_finished (GError **error)
+{
+	gchar *fin_val;
+	seaf_warning("Checking if finished... %s\n", finished == 1 ? "True" : "False");
+
+	fin_val = g_strdup_printf("%s\n", finished == 1 ? "True" : "False");
+	return fin_val;
 }
 
 int

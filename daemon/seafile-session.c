@@ -481,6 +481,8 @@ cleanup_job_done (void *vdata)
     }
 
     // We consider this the start of the program.
+	finished = 0;
+	num_files_chunked = 0;
     global_timestamp = g_get_monotonic_time();
     setup_time = g_get_monotonic_time() - setup_time;
     num_bytes_read = 0;

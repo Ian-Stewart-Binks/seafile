@@ -11,7 +11,8 @@ extern gint64 metadata_load_time;
 extern gint64 setup_time;
 extern gint64 output_num;
 extern gint64 input_num;
-
+extern gint64 finished;
+extern gint64 num_files_chunked;
 
 /**
   + * seafile_get_debug_timers:
@@ -20,6 +21,9 @@ extern gint64 input_num;
    */
 char*
 seafile_get_debug_timers (GError **error);
+
+char*
+seafile_get_finished (GError **error);
 
 /**
  * seafile_get_session_info:

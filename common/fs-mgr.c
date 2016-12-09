@@ -884,6 +884,7 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
             seaf_warning ("Failed to chunk file with CDC.\n");
             return -1;
         }
+		num_files_chunked++;
 		getrusage(RUSAGE_THREAD, &resource_usage);
 		
 		cpu_user_timestamp += tv_to_ms(resource_usage.ru_utime) - old_cpu_user_timestamp;
