@@ -468,7 +468,7 @@ seafile_get_finished (GError **error)
 	gchar *fin_val;
 	seaf_warning("Checking if finished... %s\n", finished == 1 ? "True" : "False");
 
-	fin_val = g_strdup_printf("%s\n", finished == 1 ? "True" : "False");
+	fin_val = g_strdup_printf("%s", finished == 1 ? "True" : "False");
 	return fin_val;
 }
 
