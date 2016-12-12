@@ -40,13 +40,14 @@
 #define SEAFILE_CLIENT_VERSION PACKAGE_VERSION
 #endif
 
-
+gint64 num_files;
+gint64 num_files_chunked;
 SeafileSession *seaf;
 SearpcClient *ccnetrpc_client;
 SearpcClient *appletrpc_client;
 CcnetClient *bind_client;
 
-static const char *short_options = "hvc:d:w:l:D:bg:G:";
+static const char *short_options = "hvc:d:w:l:D:bg:G:f:";
 static struct option long_options[] = {
     { "help", no_argument, NULL, 'h', },
     { "version", no_argument, NULL, 'v', },
@@ -56,6 +57,7 @@ static struct option long_options[] = {
     { "debug", required_argument, NULL, 'D' },
     { "worktree", required_argument, NULL, 'w' },
     { "log", required_argument, NULL, 'l' },
+    { "files", required_argument, NULL, 'f' },
     { "ccnet-debug-level", required_argument, NULL, 'g' },
     { "seafile-debug-level", required_argument, NULL, 'G' },
     { NULL, 0, NULL, 0, },
@@ -433,7 +435,8 @@ main (int argc, char **argv)
 
     argv = get_argv_utf8 (&argc);
 #endif
-
+	num_files = -1;
+	num_files_chunked = 0;
     while ((c = getopt_long (argc, argv, short_options, 
                              long_options, NULL)) != EOF)
     {
@@ -469,7 +472,11 @@ main (int argc, char **argv)
         case 'G':
             seafile_debug_level_str = optarg;
             break;
+		case 'f':
+			num_files = atoi(optarg);
+			break;
         default:
+			printf("c was %c\n", c);
             usage ();
             exit (1);
         }

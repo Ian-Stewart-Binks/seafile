@@ -298,8 +298,8 @@ def seaf_start_seafile(args):
     conf_dir = _conf_dir(args)
 
     print "Starting seafile daemon ..."
-
-    cmd = [ "seaf-daemon", "--daemon", "-c", conf_dir, "-d", seafile_datadir,
+    num_files = 0 if args.files == None else args.files
+    cmd = [ "seaf-daemon", "--daemon", "-c", conf_dir, "-f", str(num_files), "-d", seafile_datadir,
             "-w", seafile_worktree ]
     if run_argv(cmd, env=get_env()) != 0:
         print 'Failed to start seafile daemon'
@@ -748,12 +748,13 @@ def main():
     parser_init.set_defaults(func=seaf_init)
     parser_init.add_argument('-c', '--confdir', help='the config directory', type=str, required=confdir_required)
     parser_init.add_argument('-d', '--dir', help='the parent directory to put seafile-data', type=str)
-
+    print("hey")
     # start
     parser_start = subparsers.add_parser('start',
                                          help='Start ccnet and seafile daemon')
     parser_start.set_defaults(func=seaf_start_all)
     parser_start.add_argument('-c', '--confdir', help='the config directory', type=str, required=confdir_required)
+    parser_start.add_argument('-f', '--files', help='the number of files', type=str, required=confdir_required)
 
     # stop
     parser_stop = subparsers.add_parser('stop',
@@ -852,4 +853,5 @@ def main():
 
 
 if __name__ == '__main__':
+    print("hello")
     main()

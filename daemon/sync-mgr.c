@@ -114,6 +114,8 @@ static void on_repo_http_uploaded (SeafileSession *seaf,
                                    SeafSyncManager *manager);
 
 extern gint64 global_timestamp;
+gint64 num_files;
+gint64 num_files_chunked;
 gint64 metadata_load_time;
 gint64 setup_time;
 gint64 cpu_user_timestamp;
@@ -686,32 +688,27 @@ transition_sync_state (SyncTask *task, int new_state)
 
 
 
-		seaf_warning("[ga test] Old state %s\n", sync_state_str[task->state]);
-		seaf_warning("[ga test] New state %s\n", sync_state_str[new_state]);
-		seaf_warning("[ga test] bytes_read=%ld\n"
-				"bytes_written=%ld\n"
-			"cpu_time_user=%lu\n"
-			"cpu_time_sys=%lu\n"
-			"chunk_bytes=%ld\n"
-			"chunk_time=%ld\n"
-			"global_time=%ld\n"
-			"setup_time=%ld\n"
-			"meta_time=%ld\n"
-			"output_num=%ld\n"
-			"input_num=%ld\n",
-			num_bytes_read, num_bytes_written, cpu_user_timestamp, cpu_sys_timestamp, num_bytes_read_for_chunking,
-			time_spent_chunking, global_timestamp,
-			setup_time, metadata_load_time, output_num, input_num);
+		//seaf_warning("[ga test] Old state %s\n", sync_state_str[task->state]);
+		//seaf_warning("[ga test] New state %s\n", sync_state_str[new_state]);
+		//seaf_warning("[ga test] bytes_read=%ld\n"
+		//		"bytes_written=%ld\n"
+		//	"cpu_time_user=%lu\n"
+		//	"cpu_time_sys=%lu\n"
+		//	"chunk_bytes=%ld\n"
+		//	"chunk_time=%ld\n"
+		//	"global_time=%ld\n"
+		//	"setup_time=%ld\n"
+		//	"meta_time=%ld\n"
+		//	"output_num=%ld\n"
+		//	"input_num=%ld\n",
+		//	num_bytes_read, num_bytes_written, cpu_user_timestamp, cpu_sys_timestamp, num_bytes_read_for_chunking,
+		//	time_spent_chunking, global_timestamp,
+		//	setup_time, metadata_load_time, output_num, input_num);
 
-		if (task->state == SYNC_STATE_COMMIT) {
-			last_commit_time = g_get_monotonic_time();
-		}
-
-		gint64 time_since_last_commit = last_commit_time > 0 ? g_get_monotonic_time() - last_commit_time : 0;
-		seaf_warning("[ga test] time since last commit: %ld\n", time_since_last_commit);
-		if (finished == 0 && time_since_last_commit > 2000000 && task->state != SYNC_STATE_DONE && new_state == SYNC_STATE_DONE) {
+		//seaf_warning("[ga tast] %ld files of %d files chunked\n", num_files_chunked, num_files);
+		if (finished == 0 && num_files_chunked == num_files && task->state != SYNC_STATE_DONE && new_state == SYNC_STATE_DONE) {
 			global_timestamp = g_get_monotonic_time() - global_timestamp;
-			seaf_warning("Stopping global timestamp at %ld seconds\n", global_timestamp);
+			//seaf_warning("Stopping global timestamp at %ld seconds\n", global_timestamp);
 			finished = 1;
 		}
 

@@ -35,6 +35,7 @@
 #endif  /* SEAFILE_SERVER */
 
 gint64 global_timestamp;
+gint64 last_commit_time;
 gint64 metadata_load_time;
 gint64 setup_time;
 gint64 cpu_user_timestamp;
@@ -431,7 +432,6 @@ char *
 seafile_get_debug_timers (GError **error)
 {
 	gchar *timer_val;
-	seaf_warning("got %lu and %lu\n", cpu_user_timestamp, cpu_sys_timestamp);
 	timer_val = g_strdup_printf("bytes_read=%ld\n"
 		"bytes_written=%ld\n"
 		"cpu_time_user=%lu\n"
@@ -454,6 +454,7 @@ seafile_get_debug_timers (GError **error)
 	time_spent_chunking = 0;
 	metadata_load_time = 0;
 	global_timestamp = g_get_monotonic_time();
+	num_files_chunked = 0;
 	cpu_user_timestamp = 0; //tv_to_ms(resource_usage.ru_utime);
 	cpu_sys_timestamp = 0; //tv_to_ms(resource_usage.ru_stime);
 	output_num = 0;
@@ -466,7 +467,6 @@ char*
 seafile_get_finished (GError **error)
 {
 	gchar *fin_val;
-	seaf_warning("Checking if finished... %s\n", finished == 1 ? "True" : "False");
 
 	fin_val = g_strdup_printf("%s", finished == 1 ? "True" : "False");
 	return fin_val;
