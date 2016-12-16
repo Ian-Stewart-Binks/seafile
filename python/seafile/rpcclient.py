@@ -19,6 +19,16 @@ class SeafileRpcClient(ccnet.RpcClientBase):
         pass
     calc_dir_size = seafile_calc_dir_size
 
+    @searpc_func("string", [])
+    def seafile_enable_auto_sync():
+        pass
+    enable_auto_sync = seafile_enable_auto_sync
+
+    @searpc_func("string", [])
+    def seafile_disable_auto_sync():
+        pass
+    disable_auto_sync = seafile_disable_auto_sync
+
     @searpc_func("int64", [])
     def seafile_get_total_block_size():
         pass
