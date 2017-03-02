@@ -58,7 +58,7 @@ static struct option long_options[] = {
     { "debug", required_argument, NULL, 'D' },
     { "worktree", required_argument, NULL, 'w' },
     { "log", required_argument, NULL, 'l' },
-	{ "files", required_argument, NULL, 'f' },
+    { "files", required_argument, NULL, 'f' },
     { "ccnet-debug-level", required_argument, NULL, 'g' },
     { "seafile-debug-level", required_argument, NULL, 'G' },
     { NULL, 0, NULL, 0, },
@@ -231,10 +231,10 @@ start_rpc_service (CcnetClient *client)
                                      seafile_get_clone_tasks,
                                      "seafile_get_clone_tasks",
                                      searpc_signature_objlist__void());
-	searpc_server_register_function ("seafile-rpcserver",
-	                                 seafile_get_finished,
-	                                 "seafile_get_finished",
-	                                 searpc_signature_string__void());
+    searpc_server_register_function ("seafile-rpcserver",
+                                     seafile_get_finished,
+                                     "seafile_get_finished",
+                                     searpc_signature_string__void());
     searpc_server_register_function ("seafile-rpcserver",
                                      seafile_get_debug_timers,
                                      "seafile_get_debug_timers",
@@ -438,8 +438,8 @@ main (int argc, char **argv)
     argv = get_argv_utf8 (&argc);
 #endif
 
-	num_files = -1;
-	num_files_chunked = 0;
+    num_files = -1;
+    num_files_chunked = 0;
     while ((c = getopt_long (argc, argv, short_options, 
                              long_options, NULL)) != EOF)
     {

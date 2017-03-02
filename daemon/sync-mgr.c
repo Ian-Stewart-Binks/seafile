@@ -680,8 +680,8 @@ transition_sync_state (SyncTask *task, int new_state)
         }
 
         if (finished == 0 && num_files_chunked == num_files && task->state != SYNC_STATE_DONE && new_state == SYNC_STATE_DONE) {
-			global_timestamp = g_get_monotonic_time() - global_timestamp;
-			finished = 1;
+            global_timestamp = g_get_monotonic_time() - global_timestamp;
+            finished = 1;
 		}
         task->state = new_state;
         seaf_message ("Repo '%s' sync state now '%s'.\n",
