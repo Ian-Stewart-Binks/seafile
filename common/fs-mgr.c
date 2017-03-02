@@ -896,7 +896,7 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
             }
         }
 #else
-    //seaf_warning("CDC-EARLY: here\n");
+        //seaf_warning("CDC-EARLY: here\n");
         cdc.block_sz = calculate_chunk_size (sb.st_size);
         cdc.block_min_sz = cdc.block_sz >> 2;
         cdc.block_max_sz = cdc.block_sz << 2;
@@ -906,7 +906,7 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
 
         //seaf_warning("CDC-EARLY: here %p\n", live_blocks);
         if (live_blocks == NULL) {
-          //seaf_warning("CDC-EARLY: seaf_fs_manager_index_blocks -> live blocks is null\n");
+            //seaf_warning("CDC-EARLY: seaf_fs_manager_index_blocks -> live blocks is null\n");
         }
         uint64_t num_chunks = 0;
         if (offset != 0 || live_blocks) {
@@ -933,7 +933,7 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
                 goto start_chunking;
             }
             
-            // Get the file id for rthis path.
+            // Get the file id for this path.
             file_id = seaf_fs_manager_get_seafile_id_by_path (mgr, repo_id,
                                                     repo->version, commit->root_id,
                                                     path, NULL);
@@ -974,7 +974,7 @@ seaf_fs_manager_index_blocks (SeafFSManager *mgr,
             existing_blocks = seafile->blk_sha1s;
             //seaf_warning("[HASHDEBUG] first offset = %ld\n", offset);
 
-			//?seaf_warning("METADATA LOAD TIME INCREMENTED BY %d\n", tick);
+            //?seaf_warning("METADATA LOAD TIME INCREMENTED BY %d\n", tick);
             metadata_load_time += (g_get_monotonic_time() - tick);
         }
 
@@ -988,23 +988,23 @@ start_chunking:
             g_free(file_id);
         }
 
-		struct rusage resource_usage;
-		getrusage(RUSAGE_THREAD, &resource_usage);
-		gint64 old_cpu_user_timestamp = tv_to_ms(resource_usage.ru_utime);
-		gint64 old_cpu_sys_timestamp = tv_to_ms(resource_usage.ru_stime);
-        if (early_stop_filename_chunk_cdc (full_path, &cdc, crypt,
+        struct rusage resource_usage;
+        getrusage(RUSAGE_THREAD, &resource_usage);
+        gint64 old_cpu_user_timestamp = tv_to_ms(resource_usage.ru_utime);
+        gint64 old_cpu_sys_timestamp = tv_to_ms(resource_usage.ru_stime);
+        if (early_stop_filename_chunk_cdc(full_path, &cdc, crypt,
                                      (seafile != NULL) ? seafile->blk_offsets : NULL,
                                                  offset, existing_blocks, live_blocks,
                                                  num_unchanged, write_data, num_chunks) < 0) {
             seaf_warning ("Failed to chunk file with CDC.\n");
 
             if (seafile) {
-                seafile_unref (seafile);
+                seafile_unref(seafile);
             }
 
             return -1;
         }
-		num_files_chunked++;
+        num_files_chunked++;
 
         getrusage(RUSAGE_THREAD, &resource_usage);
 
