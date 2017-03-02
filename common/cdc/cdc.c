@@ -31,12 +31,12 @@ gint64 num_bytes_read_for_chunking;
 gint64 time_spent_chunking;
 
 static void print_live_block_list(char *path, GArray *array) {
-  int i;
-  uint64_t elem;
-  for (i = 0; i < array->len; i++) {
-    elem = g_array_index(array, uint64_t, i);
-    seaf_warning("CDC-EARLY: live list: %d\n", elem);
-  }
+    int i;
+    uint64_t elem;
+    for (i = 0; i < array->len; i++) {
+        elem = g_array_index(array, uint64_t, i);
+        seaf_warning("CDC-EARLY: live list: %d\n", elem);
+    }
 }
 
 
@@ -335,17 +335,17 @@ int incremental_filename_chunk_cdc(const char *filename,
 
 
 int meets_early_stop_criteria(uint64_t offset, uint64_t *offsets, int num_blocks) {
-  if (!offsets) {
-    return 0;
-  }
-  int i;
-  for (i = 0; i < num_blocks; i++) {
-    if (offsets[i] == offset) {
-      return 1;
+    if (!offsets) {
+        return 0;
     }
-  }
+    int i;
+    for (i = 0; i < num_blocks; i++) {
+        if (offsets[i] == offset) {
+          return 1;
+        }
+    }
 
-  return 0;
+    return 0;
 }
 
 int early_stop_file_chunk_cdc(int fd_src,
@@ -434,8 +434,9 @@ int early_stop_file_chunk_cdc(int fd_src,
         /* 
          * A block is at least of size block_min_sz.
          */
-        if (cur < block_min_sz - 1)
+        if (cur < block_min_sz - 1) {
             cur = block_min_sz - 1;
+		}
 
         while (cur < tail) {
             fingerprint = (cur == block_min_sz - 1) ?
@@ -474,65 +475,64 @@ int early_stop_file_chunk_cdc(int fd_src,
 }
 
 void write_out_intermediate_chunks(CDCFileDescriptor *file_descr, char **existing_blocks, int start_offset, int end_offset, uint64_t *offsets) {
-  int i;
-  for (i = start_offset; i < end_offset; i++) {
-    hex_to_rawdata (existing_blocks[i],
-                    file_descr->blk_sha1s + i * CHECKSUM_LENGTH, 20);
-    // Shouldn't be 'i', should be block number
-    file_descr->blk_offsets[i] = offsets[i];
-  }
+    int i;
+    for (i = start_offset; i < end_offset; i++) {
+        hex_to_rawdata (existing_blocks[i],
+                        file_descr->blk_sha1s + i * CHECKSUM_LENGTH, 20);
+        // Shouldn't be 'i', should be block number
+        file_descr->blk_offsets[i] = offsets[i];
+    }
 }
 
 void print_live_chunk_list(CDCFileDescriptor *file_descr, uint64_t num_chunks) {
-  int i;
-  char str[num_chunks];
-  memset(str, 0, num_chunks);
-  for (i = 0; i < num_chunks; i++) {
-     if (file_descr->live_chunk_list[i]) {
-       strcat(str, "1");
-     } else {
-       strcat(str, "0");
-     }
-  }
+    int i;
+    char str[num_chunks];
+    memset(str, 0, num_chunks);
+    for (i = 0; i < num_chunks; i++) {
+        if (file_descr->live_chunk_list[i]) {
+            strcat(str, "1");
+        } else {
+            strcat(str, "0");
+        }
+    }
 
-  seaf_warning("CDC-EARLY: chunk list: %s\n", str);
+    seaf_warning("CDC-EARLY: chunk list: %s\n", str);
 }
 
 void populate_live_list(CDCFileDescriptor *file_descr, GArray *live_blocks, uint64_t *offsets, uint64_t num_chunks) {
-  int i, j, chunk_index;
-  uint64_t elem;
-  if (live_blocks == NULL || offsets == NULL) {
-    for (chunk_index = 0; chunk_index < file_descr->max_block_nr; chunk_index++) {
-      file_descr->live_chunk_list[chunk_index] = 1;
-    }
-    //print_live_chunk_list(file_descr, file_descr->max_block_nr);
-    return;
-  }
-
-  for (i = 0; i < live_blocks->len; i++) {
-    elem = g_array_index(live_blocks, uint64_t, i);
-    for (chunk_index = num_chunks - 1; chunk_index > -1; chunk_index--) {
-      if (offsets[chunk_index] <= elem) {
-        file_descr->live_chunk_list[chunk_index] = 1;
-        break;
+    int i, j, chunk_index;
+    uint64_t elem;
+    if (live_blocks == NULL || offsets == NULL) {
+      for (chunk_index = 0; chunk_index < file_descr->max_block_nr; chunk_index++) {
+          file_descr->live_chunk_list[chunk_index] = 1;
       }
+      //print_live_chunk_list(file_descr, file_descr->max_block_nr);
+      return;
     }
-  }
 
-  file_descr->live_chunk_list[num_chunks - 1] = 1;
-  //print_live_chunk_list(file_descr, num_chunks);
+    for (i = 0; i < live_blocks->len; i++) {
+        elem = g_array_index(live_blocks, uint64_t, i);
+        for (chunk_index = num_chunks - 1; chunk_index > -1; chunk_index--) {
+            if (offsets[chunk_index] <= elem) {
+                file_descr->live_chunk_list[chunk_index] = 1;
+                break;
+            }
+        }
+    }
 
+    file_descr->live_chunk_list[num_chunks - 1] = 1;
+    //print_live_chunk_list(file_descr, num_chunks);
 }
 
 uint64_t get_chunk_nr(CDCFileDescriptor *file_descr, uint64_t old_offset, uint64_t *offsets, uint64_t num_chunks) {
 
-  int nr;
-  for (nr = 0; nr < num_chunks; nr++) {
-    if (old_offset == offsets[nr]) {
-      return nr;
+    int nr;
+    for (nr = 0; nr < num_chunks; nr++) {
+        if (old_offset == offsets[nr]) {
+            return nr;
+        }
     }
-  }
-  return -1;
+    return -1;
 }
 
 
@@ -589,7 +589,7 @@ int early_stop_filename_chunk_cdc(const char *filename,
 
     // Chunk until the final offset that has been returned is larger than the expected
     // size of the file
-    while (chunk_offset < expected_size) { /** TODO **/
+    while (chunk_offset < expected_size) {
         while (file_descr->live_chunk_list[curr_chunk_nr] != 1 && curr_chunk_nr < num_chunks) {
           curr_chunk_nr++;
           file_descr->block_nr++;
