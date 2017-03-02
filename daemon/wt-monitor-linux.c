@@ -489,13 +489,12 @@ void print_duet_event(struct duet_item *duet_events, int num_events) {
 }
 
 void merge_garrays(GArray *array_1, GArray *array_2) {
-
-  int i;
-  uint64_t elem;
-  for (i = 0; i < array_2->len; i++) {
-    elem = g_array_index(array_2, uint64_t, i);
-    g_array_append_val(array_1, elem);
-  }
+    int i;
+    uint64_t elem;
+    for (i = 0; i < array_2->len; i++) {
+        elem = g_array_index(array_2, uint64_t, i);
+        g_array_append_val(array_1, elem);
+    }
 }
 
 static void duet_events_to_wtevents(struct duet_item *duet_events,
@@ -533,7 +532,6 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
                                                     g_direct_equal,
                                                     NULL, NULL);
 
-	//print_duet_event(duet_events, num_events);
     for (i = 0; i < num_events; i++) {
         duet_uuid = duet_events[i].uuid;
         uuid = UUID_IDX(duet_uuid);
@@ -592,8 +590,7 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
         uuid = (uint64_t) key;
         live_block_list = g_array_new(1, 1, sizeof(uint64_t));
         g_hash_table_insert(uuid_to_live_block_hash, (gpointer) uuid, (gpointer) live_block_list);
-        path = (gchar *) g_hash_table_lookup(uuid_to_path_hash,
-                                             (gconstpointer) uuid);
+        path = (gchar *) g_hash_table_lookup(uuid_to_path_hash, (gconstpointer) uuid);
     }
 
     for (i = 0; i < num_events; i++) { 
@@ -639,9 +636,9 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
                                     (gpointer) old_list);
 
         } else {
-           g_hash_table_insert(status->filename_to_live_block_hash,
-                                   (gpointer) g_strdup(path),
-                                   (gpointer) live_block_list);
+            g_hash_table_insert(status->filename_to_live_block_hash,
+                                    (gpointer) g_strdup(path),
+                                    (gpointer) live_block_list);
         }
 
     }
@@ -882,13 +879,13 @@ add_watch (SeafWTMonitorPriv *priv, const char *repo_id, const char *worktree)
     /* A special event indicates repo-mgr to scan the whole worktree. */
     add_event_to_queue (info->status, WT_EVENT_SCAN_DIR, "", NULL);
 
-        seaf_warning ("[wt mon] registering with duet.\n");
-        regmask = DUET_PAGE_DIRTY | DUET_PAGE_FLUSHED | DUET_FD_NONBLOCK;
-        tfd = duet_register(SEAFILE_DUET_TASK_NAME, regmask, worktree);
-        if (tfd <= 0) {
-            seaf_warning ("[wt_duet] failed to register with duet. worktree: %s\n", worktree);
-            return -1;
-        }
+    seaf_warning ("[wt mon] registering with duet.\n");
+    regmask = DUET_PAGE_DIRTY | DUET_PAGE_FLUSHED | DUET_FD_NONBLOCK;
+    tfd = duet_register(SEAFILE_DUET_TASK_NAME, regmask, worktree);
+    if (tfd <= 0) {
+        seaf_warning ("[wt_duet] failed to register with duet. worktree: %s\n", worktree);
+        return -1;
+    }
     /* Register the working directory with Duet. */
     pthread_mutex_lock (&priv->hash_lock);
     g_hash_table_insert (priv->duet_hash,
@@ -942,7 +939,7 @@ static int handle_rm_repo (SeafWTMonitor *monitor,
     int inotify_fd = (int)(long)inotify_handle;
     int duet_tfd = (int)(long)duet_handle;
 
-	seaf_warning ("[wt mon] deregistering with duet.\n");
+    seaf_warning ("[wt mon] deregistering with duet.\n");
     close (inotify_fd);
     if (close(duet_tfd) < -1) {
         seaf_warning ("[wt mon] failed to deregister tfd=%d with duet.\n",
