@@ -488,13 +488,13 @@ void print_duet_event(struct duet_item *duet_events, int num_events) {
     seaf_warning("CDC-PRINT_EVENT: stop %d\n", num_events);
 }
 
-void merge_garrays(GArray *array_1, GArray *array_2) {
-    int i;
-    uint64_t elem;
-    for (i = 0; i < array_2->len; i++) {
-        elem = g_array_index(array_2, uint64_t, i);
-        g_array_append_val(array_1, elem);
-    }
+gboolean merge_with(gpointer key, gpointer value, gpointer tree_1) {
+	g_tree_insert((GTree *) tree_1, key, value);
+	return 0;
+}
+
+void merge_gtrees(GTree *tree_1, GTree *tree_2) {
+	g_tree_foreach(tree_2, merge_with, &tree_1);
 }
 
 static void duet_events_to_wtevents(struct duet_item *duet_events,
@@ -606,14 +606,14 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
     // Now generate internal events based off of the duet events we found.
     g_hash_table_iter_init(&iter, uuid_to_path_hash);
     int size;
-    GArray *old_list;
+    GTree *old_list;
     pthread_mutex_lock(&status->duet_hint_mutex);
     while (g_hash_table_iter_next (&iter, &key, &value)) {
         uuid = (uint64_t) key;
         path = (gchar *) value;
         size = g_hash_table_lookup(uuid_to_largest_offset_hash, uuid);
         duet_offset = (uint64_t) g_hash_table_lookup(uuid_to_offset_hash, uuid);
-        live_blocks = (GArray *) g_hash_table_lookup(uuid_to_live_block_hash, uuid);
+        live_blocks = (GTree *) g_hash_table_lookup(uuid_to_live_block_hash, uuid);
         // Set the lowest offset we've seen for this UUID.
         if (g_hash_table_lookup_extended(status->filename_to_offset_hash,
                                          path, NULL, (void **) &offset)) {
@@ -630,7 +630,7 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
 
         if (g_hash_table_lookup_extended(status->filename_to_live_block_hash,
                                          path, NULL, (void **) &old_list)) {
-            merge_garrays(old_list, live_blocks);
+            merge_gtrees(old_list, live_blocks);
             g_hash_table_replace(status->filename_to_live_block_hash,
                                     (gpointer) g_strdup(path),
                                     (gpointer) old_list);
