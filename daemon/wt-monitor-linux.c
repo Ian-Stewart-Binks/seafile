@@ -584,12 +584,12 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
     }
 
     g_hash_table_iter_init(&iter, uuid_to_largest_offset_hash);
-    GArray *live_block_list;
+    GTree *live_blocks;
     uint64_t largest_duet_offset;
     while(g_hash_table_iter_next (&iter, &key, &value)) {
         uuid = (uint64_t) key;
-        live_block_list = g_array_new(1, 1, sizeof(uint64_t));
-        g_hash_table_insert(uuid_to_live_block_hash, (gpointer) uuid, (gpointer) live_block_list);
+        live_blocks = g_array_new(1, 1, sizeof(uint64_t));
+        g_hash_table_insert(uuid_to_live_block_hash, (gpointer) uuid, (gpointer) live_blocks);
         path = (gchar *) g_hash_table_lookup(uuid_to_path_hash, (gconstpointer) uuid);
     }
 
@@ -599,8 +599,8 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
         duet_offset = duet_events[i].idx << 12;
         path = (gchar *) g_hash_table_lookup(uuid_to_path_hash,
                                              (gconstpointer) uuid);
-        g_hash_table_lookup_extended(uuid_to_live_block_hash, (gconstpointer) uuid, NULL, (void **) &live_block_list); 
-        g_array_append_val(live_block_list, duet_offset);
+        g_hash_table_lookup_extended(uuid_to_live_block_hash, (gconstpointer) uuid, NULL, (void **) &live_blocks); 
+        g_array_append_val(live_blocks, duet_offset);
     }
 
     // Now generate internal events based off of the duet events we found.
@@ -613,7 +613,7 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
         path = (gchar *) value;
         size = g_hash_table_lookup(uuid_to_largest_offset_hash, uuid);
         duet_offset = (uint64_t) g_hash_table_lookup(uuid_to_offset_hash, uuid);
-        live_block_list = (GArray *) g_hash_table_lookup(uuid_to_live_block_hash, uuid);
+        live_blocks = (GArray *) g_hash_table_lookup(uuid_to_live_block_hash, uuid);
         // Set the lowest offset we've seen for this UUID.
         if (g_hash_table_lookup_extended(status->filename_to_offset_hash,
                                          path, NULL, (void **) &offset)) {
@@ -630,7 +630,7 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
 
         if (g_hash_table_lookup_extended(status->filename_to_live_block_hash,
                                          path, NULL, (void **) &old_list)) {
-            merge_garrays(old_list, live_block_list);
+            merge_garrays(old_list, live_blocks);
             g_hash_table_replace(status->filename_to_live_block_hash,
                                     (gpointer) g_strdup(path),
                                     (gpointer) old_list);
@@ -638,7 +638,7 @@ static void duet_events_to_wtevents(struct duet_item *duet_events,
         } else {
             g_hash_table_insert(status->filename_to_live_block_hash,
                                     (gpointer) g_strdup(path),
-                                    (gpointer) live_block_list);
+                                    (gpointer) live_blocks);
         }
 
     }
